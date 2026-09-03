@@ -1,0 +1,48 @@
+import { Review } from '../types';
+
+export const mockReviews: Review[] = [
+  {
+    id: 'rev-1',
+    bookingId: 'bk-2024-004',
+    workerId: 'worker-103',
+    customerId: 'cust-101',
+    customerName: 'Ramesh Sharma',
+    rating: 5,
+    comment: 'Exceptional service by Radha Bai and her team from Mahila Shramik Cooperative! Hard water stains that resisted normal detergents were completely scrubbed clean. Cooperative fair-wage model gives peace of mind.',
+    createdAt: '2024-02-24',
+    verifiedJob: true,
+  },
+  {
+    id: 'rev-2',
+    bookingId: 'bk-prev-102',
+    workerId: 'worker-101',
+    customerId: 'cust-105',
+    customerName: 'Priya Nambiar',
+    rating: 5,
+    comment: 'Suresh Kumar is courteous, very knowledgeable, and arrived right on time with proper testing tools. Replaced MCB switch in 25 mins. Transparent pricing with cooperative receipt.',
+    createdAt: '2024-02-20',
+    verifiedJob: true,
+  },
+  {
+    id: 'rev-3',
+    bookingId: 'bk-prev-103',
+    workerId: 'worker-101',
+    customerId: 'cust-106',
+    customerName: 'Dr. Venkat Raman',
+    rating: 4.8,
+    comment: 'Very professional electrical wiring diagnostic. Pointed out an earthing fault that saved our home appliances. Great cooperative initiative.',
+    createdAt: '2024-02-14',
+    verifiedJob: true,
+  },
+  {
+    id: 'rev-4',
+    bookingId: 'bk-prev-104',
+    workerId: 'worker-102',
+    customerId: 'cust-107',
+    customerName: 'Kavita Hegde',
+    rating: 5,
+    comment: 'Manjunatha fixed a persistent concealed pipe seepage behind the tile wall without breaking extra tiles. Highly skilled cooperative plumber!',
+    createdAt: '2024-02-18',
+    verifiedJob: true,
+  },
+];
