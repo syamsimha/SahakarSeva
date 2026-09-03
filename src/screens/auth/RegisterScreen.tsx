@@ -8,7 +8,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Button } from '../../components/ui';
@@ -25,19 +24,24 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   onNavigateToLogin,
   onRegisterSuccess,
 }) => {
-  const { login } = useAuth();
+  const { register, isLoading, authError, clearError } = useAuth();
   const [step, setStep] = useState<'role' | 'form'>('role');
   const [selectedRole, setSelectedRole] = useState<UserRole>('customer');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Common Fields
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('Bengaluru');
+  const [pincode, setPincode] = useState('560038');
 
   // Worker-specific Fields
-  const [primarySkill, setPrimarySkill] = useState('Electrical');
+  const [primarySkill, setPrimarySkill] = useState('Electrician');
   const [experienceYears, setExperienceYears] = useState('5');
   const [cooperativeSociety, setCooperativeSociety] = useState('Nagarika Seva Sahakari Samiti');
   const [aadhaarUploaded, setAadhaarUploaded] = useState(false);
@@ -46,29 +50,81 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   // Admin-specific Fields
   const [adminDesignation, setAdminDesignation] = useState('District Cooperative Officer');
   const [societyRegNo, setSocietyRegNo] = useState('DRB/LCC/2024/098');
+  const [federationName, setFederationName] = useState('Karnataka State Labour Cooperative Federation');
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
+    setValidationError(null);
+    clearError();
     setStep('form');
   };
 
-  const handleSubmit = async () => {
-    await login(selectedRole);
-    onRegisterSuccess();
+  const validateForm = (): boolean => {
+    if (!fullName.trim()) {
+      setValidationError('Please enter your full name.');
+      return false;
+    }
+    if (!email.trim() || !email.includes('@')) {
+      setValidationError('Please enter a valid email address.');
+      return false;
+    }
+    if (!password || password.length < 6) {
+      setValidationError('Password must be at least 6 characters.');
+      return false;
+    }
+    if (password !== confirmPassword) {
+      setValidationError('Passwords do not match.');
+      return false;
+    }
+    setValidationError(null);
+    return true;
   };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+
+    try {
+      await register({
+        role: selectedRole,
+        fullName: fullName.trim(),
+        email: email.trim(),
+        password,
+        phone: phone.trim(),
+        address: address.trim(),
+        city: city.trim(),
+        pincode: pincode.trim(),
+        primarySkill: selectedRole === 'worker' ? primarySkill : undefined,
+        experienceYears: selectedRole === 'worker' ? parseInt(experienceYears, 10) || 1 : undefined,
+        cooperativeName: selectedRole === 'worker' ? cooperativeSociety : undefined,
+        adminDesignation: selectedRole === 'admin' ? adminDesignation : undefined,
+        societyRegNo: selectedRole === 'admin' ? societyRegNo : undefined,
+        federationName: selectedRole === 'admin' ? federationName : undefined,
+      });
+      onRegisterSuccess();
+    } catch (e) {
+      // Handled in authError
+    }
+  };
+
+  const activeError = validationError || authError;
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => {
-              if (step === 'form') setStep('role');
-              else onNavigateToLogin();
+              if (step === 'form') {
+                setStep('role');
+                setValidationError(null);
+                clearError();
+              } else {
+                onNavigateToLogin();
+              }
             }}
             style={styles.backBtn}
           >
@@ -157,12 +213,63 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               </Text>
             </View>
 
-            <Text style={styles.inputLabel}>Full Name</Text>
+            {/* Error Banner */}
+            {activeError && (
+              <View style={styles.errorBanner}>
+                <Ionicons name="alert-circle" size={18} color={colors.danger} />
+                <Text style={styles.errorBannerText}>{activeError}</Text>
+                <TouchableOpacity onPress={() => { setValidationError(null); clearError(); }}>
+                  <Ionicons name="close" size={16} color={colors.danger} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <Text style={styles.inputLabel}>Full Name *</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g. Anand Kumar"
               value={fullName}
-              onChangeText={setFullName}
+              onChangeText={(t) => { setFullName(t); setValidationError(null); }}
+            />
+
+            <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Email Address *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="name@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={(t) => { setEmail(t); setValidationError(null); }}
+            />
+
+            <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Password (min. 6 characters) *</Text>
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="••••••••"
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={(t) => { setPassword(t); setValidationError(null); }}
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.eyeBtn}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Confirm Password *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="••••••••"
+              secureTextEntry={!showPassword}
+              value={confirmPassword}
+              onChangeText={(t) => { setConfirmPassword(t); setValidationError(null); }}
             />
 
             <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Mobile Number</Text>
@@ -174,15 +281,6 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               onChangeText={setPhone}
             />
 
-            <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Email Address</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="name@example.com"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
-            />
-
             <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Address / Locality</Text>
             <TextInput
               style={styles.input}
@@ -190,6 +288,28 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               value={address}
               onChangeText={setAddress}
             />
+
+            <View style={styles.twoColumnRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>City</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Bengaluru"
+                  value={city}
+                  onChangeText={setCity}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Pincode</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="560038"
+                  keyboardType="numeric"
+                  value={pincode}
+                  onChangeText={setPincode}
+                />
+              </View>
+            </View>
 
             {/* Role-specific additions */}
             {selectedRole === 'worker' && (
@@ -266,6 +386,14 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
                   onChangeText={setAdminDesignation}
                 />
 
+                <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Federation Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. State Labour Cooperative Federation"
+                  value={federationName}
+                  onChangeText={setFederationName}
+                />
+
                 <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>Society Registration Number</Text>
                 <TextInput
                   style={styles.input}
@@ -279,6 +407,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             <Button
               title="Complete Registration"
               onPress={handleSubmit}
+              loading={isLoading}
               variant="primary"
               size="lg"
               fullWidth
@@ -390,6 +519,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
   },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    marginBottom: spacing.md,
+    gap: 8,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.danger,
+    fontWeight: '500',
+  },
   inputLabel: {
     fontSize: 13,
     fontWeight: '600',
@@ -405,6 +552,28 @@ const styles = StyleSheet.create({
     height: 48,
     fontSize: 14,
     color: colors.text,
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    height: 48,
+  },
+  passwordInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+  },
+  eyeBtn: {
+    padding: 4,
+  },
+  twoColumnRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
   },
   docUploadBox: {
     gap: spacing.sm,
