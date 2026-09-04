@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors, borderRadius, spacing, typography } from '../../theme';
-import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LanguageModal } from './LanguageModal';
@@ -27,31 +26,8 @@ export const Header: React.FC<HeaderProps> = ({
   onNotificationPress,
   unreadNotificationsCount = 2,
 }) => {
-  const { role, user, logout } = useAuth();
   const { language, t } = useLanguage();
   const [langModalVisible, setLangModalVisible] = useState(false);
-
-  const getRoleLabel = () => {
-    switch (role) {
-      case 'worker':
-        return t('worker');
-      case 'admin':
-        return t('admin');
-      default:
-        return t('customer');
-    }
-  };
-
-  const getRoleColor = () => {
-    switch (role) {
-      case 'worker':
-        return colors.workerBadge;
-      case 'admin':
-        return colors.adminBadge;
-      default:
-        return colors.customerBadge;
-    }
-  };
 
   return (
     <View style={styles.container}>
@@ -86,16 +62,8 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </View>
 
-        {/* Right Actions: Role badge, Lang pill, Notification bell */}
+        {/* Right Actions: Lang pill, Notification bell */}
         <View style={styles.rightContainer}>
-          {/* Read-Only Role Status Badge */}
-          <View style={[styles.rolePill, { borderColor: getRoleColor() }]}>
-            <View style={[styles.roleDot, { backgroundColor: getRoleColor() }]} />
-            <Text style={[styles.roleText, { color: getRoleColor() }]}>
-              {getRoleLabel()}
-            </Text>
-          </View>
-
           {/* Language Selector Button */}
           <TouchableOpacity
             activeOpacity={0.7}
@@ -119,19 +87,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <Text style={styles.badgeText}>{unreadNotificationsCount}</Text>
                 </View>
               )}
-            </TouchableOpacity>
-          )}
-
-          {/* Quick Sign Out Action (when authenticated) */}
-          {user && (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={logout}
-              style={styles.logoutBtn}
-              accessibilityLabel="Sign Out"
-              accessibilityRole="button"
-            >
-              <Ionicons name="log-out-outline" size={18} color={colors.danger} />
             </TouchableOpacity>
           )}
         </View>
@@ -216,26 +171,7 @@ const styles = StyleSheet.create({
   rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  rolePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: borderRadius.round,
-    borderWidth: 1,
-    backgroundColor: colors.background,
-  },
-  roleDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 4,
-  },
-  roleText: {
-    fontSize: 11,
-    fontWeight: '700',
+    gap: 8,
   },
   langBtn: {
     flexDirection: 'row',
@@ -269,12 +205,5 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: colors.textInverse,
     fontWeight: '700',
-  },
-  logoutBtn: {
-    padding: 6,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.dangerLight,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

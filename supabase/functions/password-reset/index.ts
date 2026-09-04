@@ -57,12 +57,12 @@ async function computeHmacSha256(pepper: string, data: string): Promise<string> 
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Generate cryptographically secure 6-digit numeric OTP
+// Generate cryptographically secure 6-digit numeric OTP (always exactly 6 digits, including leading zeros)
 function generateSecureOtp(): string {
   const randomValues = new Uint32Array(1);
   crypto.getRandomValues(randomValues);
-  const code = (randomValues[0] % 900000) + 100000;
-  return code.toString();
+  const code = randomValues[0] % 1000000;
+  return code.toString().padStart(6, '0');
 }
 
 // Generate cryptographically secure 32-byte (64 hex characters) reset token
