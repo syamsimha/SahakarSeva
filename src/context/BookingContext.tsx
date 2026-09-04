@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Booking, BookingStatus } from '../types';
-import { bookingService } from '../services';
+import { bookingService, notificationService, workerService } from '../services';
 
 interface BookingContextType {
   bookings: Booking[];
@@ -54,6 +54,44 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? updated : b))
       );
+
+      if (status === 'accepted') {
+        await notificationService.sendNotification({
+          recipientRole: 'customer',
+          recipientId: updated.customerId,
+          title: 'Booking Accepted',
+          body: `${updated.workerName} accepted your booking for ${updated.serviceTitle}.`,
+          type: 'booking',
+          relatedId: updated.id,
+        });
+      } else if (status === 'in_progress') {
+        await notificationService.sendNotification({
+          recipientRole: 'customer',
+          recipientId: updated.customerId,
+          title: 'Service In Progress',
+          body: `${updated.workerName} has started work on ${updated.serviceTitle}.`,
+          type: 'booking',
+          relatedId: updated.id,
+        });
+      } else if (status === 'completed') {
+        await notificationService.sendNotification({
+          recipientRole: 'customer',
+          recipientId: updated.customerId,
+          title: 'Service Completed',
+          body: `${updated.workerName} completed ${updated.serviceTitle}. Please share your rating and review.`,
+          type: 'booking',
+          relatedId: updated.id,
+        });
+      } else if (status === 'cancelled') {
+        await notificationService.sendNotification({
+          recipientRole: 'customer',
+          recipientId: updated.customerId,
+          title: 'Booking Cancelled',
+          body: `Your booking for ${updated.serviceTitle} was cancelled or declined.`,
+          type: 'booking',
+          relatedId: updated.id,
+        });
+      }
     }
     return updated;
   };
@@ -74,6 +112,12 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     rating: number,
     comment: string
   ) => {
+    // Prevent duplicate reviews for the same booking
+    const existing = bookings.find((b) => b.id === bookingId);
+    if (existing?.hasRated) {
+      return;
+    }
+
     await bookingService.addReview({
       bookingId,
       workerId,
@@ -83,9 +127,24 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       comment,
       verifiedJob: true,
     });
+
+    await workerService.recordReview(workerId, rating);
+
     setBookings((prev) =>
       prev.map((b) => (b.id === bookingId ? { ...b, hasRated: true } : b))
     );
+
+    const serviceName = existing?.serviceTitle || 'service';
+    const previewComment = comment.length > 50 ? `${comment.substring(0, 47)}...` : comment;
+
+    await notificationService.sendNotification({
+      recipientRole: 'worker',
+      recipientId: workerId,
+      title: 'New Customer Review',
+      body: `${customerName} rated you ${rating}★ for ${serviceName}: "${previewComment}"`,
+      type: 'job',
+      relatedId: bookingId,
+    });
   };
 
   return (

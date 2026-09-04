@@ -1,7 +1,7 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AuthProvider, BookingProvider, LanguageProvider } from './src/context';
+import { AuthProvider, BookingProvider, LanguageProvider, NotificationProvider } from './src/context';
 import { RootNavigator } from './src/navigation';
 
 export default function App() {
@@ -10,8 +10,10 @@ export default function App() {
       <LanguageProvider>
         <AuthProvider>
           <BookingProvider>
-            <StatusBar style="auto" />
-            <RootNavigator />
+            <NotificationProvider>
+              <StatusBar style="auto" />
+              <RootNavigator />
+            </NotificationProvider>
           </BookingProvider>
         </AuthProvider>
       </LanguageProvider>

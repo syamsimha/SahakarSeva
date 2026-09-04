@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,13 @@ import {
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
 import { JobRequestCard, BookingCard, StatCard } from '../../components/cards';
-import { Button } from '../../components/ui';
+import { Button, StarRating } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useBookings } from '../../context/BookingContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { WorkerProfile } from '../../types';
+import { useNotifications } from '../../context/NotificationContext';
+import { bookingService } from '../../services';
+import { WorkerProfile, Review } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
 interface WorkerHomeScreenProps {
@@ -36,10 +38,23 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
 }) => {
   const { user } = useAuth();
   const { bookings, acceptJob, rejectJob, updateStatus } = useBookings();
+  const { unreadCount } = useNotifications();
   const { t } = useLanguage();
 
   const worker = user as WorkerProfile;
   const [isAvailable, setIsAvailable] = useState(worker?.isAvailable ?? true);
+  const [workerReviews, setWorkerReviews] = useState<Review[]>([]);
+
+  useEffect(() => {
+    const workerId = worker?.id || 'worker-101';
+    bookingService.getReviewsForWorker(workerId).then(setWorkerReviews);
+  }, [worker?.id, bookings]);
+
+  // Calculate rating dynamically from actual submitted reviews
+  const avgRating = workerReviews.length > 0
+    ? workerReviews.reduce((sum, r) => sum + r.rating, 0) / workerReviews.length
+    : (worker?.rating || 5.0);
+  const totalReviewsCount = workerReviews.length;
 
   // Filter jobs
   const pendingRequests = bookings.filter((b) => b.status === 'requested');
@@ -54,7 +69,7 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
         title="Worker Console"
         subtitle={worker?.cooperativeName || 'Nagarika Seva Cooperative'}
         onNotificationPress={onNavigateToNotifications}
-        unreadNotificationsCount={3}
+        unreadNotificationsCount={unreadCount}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -107,10 +122,10 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
           />
           <StatCard
             title="Cooperative Rating"
-            value="4.9 ★"
+            value={`${avgRating.toFixed(1)} ★`}
             icon="star-outline"
             color="#EAB308"
-            subtitle="142 ratings"
+            subtitle={`${totalReviewsCount} ${totalReviewsCount === 1 ? 'review' : 'reviews'}`}
           />
         </View>
 
@@ -238,6 +253,40 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
             <Text style={styles.quickLinkTitle}>ID & Verification</Text>
             <Text style={styles.quickLinkSub}>Documents & guild badges</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Customer Reviews & Feedback Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.badgeTitleRow}>
+              <Text style={styles.sectionTitle}>Customer Feedback & Ratings</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>{totalReviewsCount}</Text>
+              </View>
+            </View>
+            <StarRating rating={avgRating} count={totalReviewsCount} size={13} />
+          </View>
+
+          {workerReviews.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="star-outline" size={32} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>No Reviews Yet</Text>
+              <Text style={styles.emptySub}>
+                Verified customer ratings and reviews will appear here after job completions.
+              </Text>
+            </View>
+          ) : (
+            workerReviews.map((rev) => (
+              <View key={rev.id} style={styles.reviewCard}>
+                <View style={styles.reviewTop}>
+                  <Text style={styles.reviewerName}>{rev.customerName}</Text>
+                  <Text style={styles.reviewDate}>{rev.createdAt}</Text>
+                </View>
+                <StarRating rating={rev.rating} showCount={false} size={12} style={{ marginVertical: 4 }} />
+                <Text style={styles.reviewComment}>"{rev.comment}"</Text>
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </View>
@@ -414,6 +463,34 @@ const styles = StyleSheet.create({
   quickLinkSub: {
     fontSize: 11,
     color: colors.textSecondary,
+    marginTop: 2,
+  },
+  reviewCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  reviewTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reviewerName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  reviewDate: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  reviewComment: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 16,
     marginTop: 2,
   },
 });

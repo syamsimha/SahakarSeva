@@ -30,7 +30,7 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({
   const { bookings, rateBooking } = useBookings();
   const booking = bookings.find((b) => b.id === bookingId);
 
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>(['Punctual & Polite', 'Fair Pricing']);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,6 +40,29 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({
       <View style={styles.container}>
         <Header title="Rate Service" showBack onBack={onBack} />
         <View style={styles.center}><Text>Booking not found</Text></View>
+      </View>
+    );
+  }
+
+  // Prevent duplicate reviews for the same completed booking
+  if (booking.hasRated) {
+    return (
+      <View style={styles.container}>
+        <Header title="Rate Service" showBack onBack={onBack} />
+        <View style={styles.center}>
+          <Ionicons name="checkmark-circle" size={56} color={colors.success} style={{ marginBottom: spacing.md }} />
+          <Text style={styles.alreadyTitle}>Service Already Reviewed</Text>
+          <Text style={styles.alreadySubtitle}>
+            You have already submitted a verified review for this booking.
+          </Text>
+          <Button
+            title="Go Back"
+            onPress={onBack}
+            variant="primary"
+            size="md"
+            style={{ marginTop: spacing.lg }}
+          />
+        </View>
       </View>
     );
   }
@@ -62,17 +85,30 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({
   };
 
   const handleSubmit = async () => {
+    // Validate rating is selected (1-5)
+    if (rating < 1 || rating > 5) {
+      Alert.alert('Rating Required', 'Please select a star rating from 1 to 5 stars before submitting.');
+      return;
+    }
+
+    // Validate review input: must have at least one tag or a non-empty comment
+    const trimmedComment = comment.trim();
+    if (selectedTags.length === 0 && !trimmedComment) {
+      Alert.alert('Feedback Required', 'Please provide a short comment or select at least one feedback tag.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const fullComment = selectedTags.length > 0
-        ? `[${selectedTags.join(', ')}] ${comment}`
-        : comment || 'Excellent cooperative service!';
+        ? (trimmedComment ? `[${selectedTags.join(', ')}] ${trimmedComment}` : `[${selectedTags.join(', ')}]`)
+        : trimmedComment;
 
       await rateBooking(
         booking.id,
         booking.workerId,
-        user?.id || 'cust-101',
-        user?.name || 'Ramesh Sharma',
+        booking.customerId || user?.id || 'cust-101',
+        booking.customerName || user?.name || 'Customer',
         rating,
         fullComment
       );
@@ -118,13 +154,17 @@ export const ReviewScreen: React.FC<ReviewScreenProps> = ({
             ))}
           </View>
           <Text style={styles.ratingDescriptor}>
-            {rating === 5
+            {rating === 0
+              ? 'Tap a star to select your rating (1 - 5 stars)'
+              : rating === 5
               ? 'Outstanding Cooperative Service ⭐⭐⭐⭐⭐'
               : rating === 4
-              ? 'Very Good'
+              ? 'Very Good ⭐⭐⭐⭐'
               : rating === 3
-              ? 'Satisfactory'
-              : 'Needs Improvement'}
+              ? 'Satisfactory ⭐⭐⭐'
+              : rating === 2
+              ? 'Needs Improvement ⭐⭐'
+              : 'Poor Service ⭐'}
           </Text>
         </View>
 
@@ -313,5 +353,18 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlignVertical: 'top',
     minHeight: 90,
+  },
+  alreadyTitle: {
+    ...typography.h3,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  alreadySubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xl,
+    lineHeight: 18,
   },
 });

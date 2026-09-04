@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
 import { EmptyState } from '../../components/ui';
-import { mockNotifications } from '../../data';
+import { useNotifications } from '../../context/NotificationContext';
 import { NotificationItem } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -12,7 +12,7 @@ interface NotificationsScreenProps {
 }
 
 export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ onBack }) => {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(mockNotifications);
+  const { notifications, unreadCount, markAllAsRead } = useNotifications();
 
   const getIcon = (type: NotificationItem['type']) => {
     switch (type) {
@@ -44,9 +44,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ onBack
     }
   };
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
+
 
   return (
     <View style={styles.container}>
@@ -58,9 +56,9 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ onBack
 
       <View style={styles.topBar}>
         <Text style={styles.unreadCount}>
-          {notifications.filter((n) => !n.read).length} Unread Updates
+          {unreadCount} Unread Updates
         </Text>
-        <TouchableOpacity onPress={markAllRead}>
+        <TouchableOpacity onPress={markAllAsRead}>
           <Text style={styles.markReadText}>Mark all as read</Text>
         </TouchableOpacity>
       </View>

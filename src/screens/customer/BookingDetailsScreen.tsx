@@ -198,10 +198,11 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
             />
             {booking.status === 'completed' && (
               <Button
-                title="Rate Worker"
+                title={booking.hasRated ? 'Rated ★' : 'Rate Worker'}
                 icon="star"
                 onPress={() => onNavigateToRate(booking.id)}
-                variant="secondary"
+                variant={booking.hasRated ? 'outline' : 'secondary'}
+                disabled={Boolean(booking.hasRated)}
                 size="sm"
                 style={{ flex: 1 }}
               />

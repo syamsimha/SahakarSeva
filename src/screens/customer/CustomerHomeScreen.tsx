@@ -14,6 +14,7 @@ import { serviceCategories, emergencyServices } from '../../data';
 import { useAuth } from '../../context/AuthContext';
 import { useBookings } from '../../context/BookingContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { workerService } from '../../services';
 import { WorkerProfile } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +38,7 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
 }) => {
   const { user } = useAuth();
   const { bookings } = useBookings();
+  const { unreadCount } = useNotifications();
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [workers, setWorkers] = useState<WorkerProfile[]>([]);
@@ -56,7 +58,7 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
         showLocation
         locationName="Indiranagar, Bengaluru"
         onNotificationPress={onNavigateToNotifications}
-        unreadNotificationsCount={2}
+        unreadNotificationsCount={unreadCount}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>

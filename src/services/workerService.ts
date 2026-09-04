@@ -91,6 +91,21 @@ class WorkerService {
       }, 150);
     });
   }
+
+  async recordReview(workerId: string, rating: number): Promise<WorkerProfile | null> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const worker = this.workers.find((w) => w.id === workerId);
+        if (worker) {
+          const currentTotal = worker.rating * worker.reviewCount;
+          worker.reviewCount += 1;
+          worker.rating = Math.round(((currentTotal + rating) / worker.reviewCount) * 10) / 10;
+          return resolve({ ...worker });
+        }
+        resolve(null);
+      }, 150);
+    });
+  }
 }
 
 export const workerService = new WorkerService();
