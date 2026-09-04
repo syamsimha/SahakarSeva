@@ -5,7 +5,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LanguageModal } from './LanguageModal';
-import { RoleSwitcherModal } from './RoleSwitcherModal';
 
 interface HeaderProps {
   title?: string;
@@ -28,19 +27,18 @@ export const Header: React.FC<HeaderProps> = ({
   onNotificationPress,
   unreadNotificationsCount = 2,
 }) => {
-  const { role } = useAuth();
-  const { language } = useLanguage();
+  const { role, user, logout } = useAuth();
+  const { language, t } = useLanguage();
   const [langModalVisible, setLangModalVisible] = useState(false);
-  const [roleModalVisible, setRoleModalVisible] = useState(false);
 
   const getRoleLabel = () => {
     switch (role) {
       case 'worker':
-        return 'Worker';
+        return t('worker');
       case 'admin':
-        return 'Admin';
+        return t('admin');
       default:
-        return 'Customer';
+        return t('customer');
     }
   };
 
@@ -68,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
             <View style={styles.locationContainer}>
               <View style={styles.locationHeaderRow}>
                 <Ionicons name="location" size={14} color={colors.primary} />
-                <Text style={styles.locationLabel}>Current Location</Text>
+                <Text style={styles.locationLabel}>{t('current_location')}</Text>
                 <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
               </View>
               <Text style={styles.locationValue} numberOfLines={1}>
@@ -81,26 +79,22 @@ export const Header: React.FC<HeaderProps> = ({
                 <Ionicons name="people" size={16} color={colors.textInverse} />
               </View>
               <View>
-                <Text style={styles.brandTitle}>{title || 'Sahakar Sathi'}</Text>
+                <Text style={styles.brandTitle}>{title || t('app_name')}</Text>
                 {subtitle && <Text style={styles.brandSubtitle}>{subtitle}</Text>}
               </View>
             </View>
           )}
         </View>
 
-        {/* Right Actions: Role pill, Lang pill, Notification bell */}
+        {/* Right Actions: Role badge, Lang pill, Notification bell */}
         <View style={styles.rightContainer}>
-          {/* Quick Role Switcher Pill */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => setRoleModalVisible(true)}
-            style={[styles.rolePill, { borderColor: getRoleColor() }]}
-          >
+          {/* Read-Only Role Status Badge */}
+          <View style={[styles.rolePill, { borderColor: getRoleColor() }]}>
             <View style={[styles.roleDot, { backgroundColor: getRoleColor() }]} />
             <Text style={[styles.roleText, { color: getRoleColor() }]}>
               {getRoleLabel()}
             </Text>
-          </TouchableOpacity>
+          </View>
 
           {/* Language Selector Button */}
           <TouchableOpacity
@@ -108,6 +102,7 @@ export const Header: React.FC<HeaderProps> = ({
             onPress={() => setLangModalVisible(true)}
             style={styles.langBtn}
           >
+            <Ionicons name="language-outline" size={14} color={colors.primary} style={{ marginRight: 3 }} />
             <Text style={styles.langText}>{language.toUpperCase()}</Text>
           </TouchableOpacity>
 
@@ -126,16 +121,25 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </TouchableOpacity>
           )}
+
+          {/* Quick Sign Out Action (when authenticated) */}
+          {user && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={logout}
+              style={styles.logoutBtn}
+              accessibilityLabel="Sign Out"
+              accessibilityRole="button"
+            >
+              <Ionicons name="log-out-outline" size={18} color={colors.danger} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
       <LanguageModal
         visible={langModalVisible}
         onClose={() => setLangModalVisible(false)}
-      />
-      <RoleSwitcherModal
-        visible={roleModalVisible}
-        onClose={() => setRoleModalVisible(false)}
       />
     </View>
   );
@@ -234,6 +238,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   langBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 7,
     paddingVertical: 4,
     borderRadius: borderRadius.sm,
@@ -263,5 +269,12 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: colors.textInverse,
     fontWeight: '700',
+  },
+  logoutBtn: {
+    padding: 6,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.dangerLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

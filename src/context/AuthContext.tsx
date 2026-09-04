@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { Platform, AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppUser, UserRole } from '../types';
-import { authService, RegisterPayload } from '../services/authService';
+import { authService, RegisterPayload, mapFriendlyAuthError } from '../services/authService';
 
 interface AuthContextType {
   user: AppUser | null;
@@ -36,6 +38,17 @@ const AuthContext = createContext<AuthContextType>({
   resetOnboarding: () => {},
 });
 
+const LAST_ACTIVE_KEY = '@sahakar_last_active_timestamp';
+const DEFAULT_TIMEOUT_MINUTES = 30;
+
+const getSessionTimeoutMs = (): number => {
+  const envVal = Number(process.env.EXPO_PUBLIC_SESSION_TIMEOUT_MINUTES);
+  if (!isNaN(envVal) && envVal > 0) {
+    return envVal * 60 * 1000;
+  }
+  return DEFAULT_TIMEOUT_MINUTES * 60 * 1000;
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [role, setRole] = useState<UserRole>('customer');
@@ -43,17 +56,99 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const lastActivityRef = useRef<number>(Date.now());
+  const lastPersistRef = useRef<number>(0);
+
+  // Throttled activity recorder (updates storage at most every 15 seconds)
+  const recordActivity = useCallback(async () => {
+    const now = Date.now();
+    lastActivityRef.current = now;
+
+    if (now - lastPersistRef.current > 15000) {
+      lastPersistRef.current = now;
+      try {
+        await AsyncStorage.setItem(LAST_ACTIVE_KEY, now.toString());
+      } catch (e) {
+        // Storage write failures are non-fatal
+      }
+    }
+  }, []);
+
+  const clearInactivityTimestamp = async () => {
+    try {
+      await AsyncStorage.removeItem(LAST_ACTIVE_KEY);
+    } catch (e) {
+      // Ignore cleanup error
+    }
+  };
+
+  const handleInactivityTimeout = useCallback(async () => {
+    await clearInactivityTimestamp();
+    try {
+      await authService.logout();
+    } catch (e) {
+      // Ignore signout error
+    }
+    setUser(null);
+    setAuthError('Your session has expired due to inactivity. Please sign in again.');
+  }, []);
+
+  // Check whether current inactivity threshold is exceeded
+  const checkInactivity = useCallback(async () => {
+    if (!user) return;
+    const now = Date.now();
+    const timeoutMs = getSessionTimeoutMs();
+
+    // In-memory check
+    if (now - lastActivityRef.current > timeoutMs) {
+      await handleInactivityTimeout();
+      return;
+    }
+
+    // Persistent storage check (important across tabs / refresh)
+    try {
+      const stored = await AsyncStorage.getItem(LAST_ACTIVE_KEY);
+      if (stored) {
+        const storedTs = Number(stored);
+        if (!isNaN(storedTs) && now - storedTs > timeoutMs) {
+          await handleInactivityTimeout();
+        }
+      }
+    } catch (e) {
+      // Ignore read error
+    }
+  }, [user, handleInactivityTimeout]);
+
   useEffect(() => {
-    // 1. Initial bootstrap: restore active Supabase session or demo user
+    // 1. Initial bootstrap: restore active Supabase session
     const initAuth = async () => {
       try {
+        const now = Date.now();
+        const timeoutMs = getSessionTimeoutMs();
+        const stored = await AsyncStorage.getItem(LAST_ACTIVE_KEY);
+
+        // If previously stored session has exceeded inactivity timeout, purge it
+        if (stored) {
+          const storedTs = Number(stored);
+          if (!isNaN(storedTs) && now - storedTs > timeoutMs) {
+            await handleInactivityTimeout();
+            return;
+          }
+        }
+
+        // Fetch real Supabase authenticated user with database profile verification
         const u = await authService.getCurrentUser();
         if (u) {
           setUser(u);
           setRole(u.role);
+          await recordActivity();
+        } else {
+          await clearInactivityTimestamp();
+          setUser(null);
         }
       } catch (err: any) {
         console.warn('Failed to restore auth session:', err?.message || err);
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
@@ -62,10 +157,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
 
     // 2. Subscribe to live auth state changes from Supabase
-    const subscription = authService.onAuthStateChange((updatedUser) => {
+    const subscription = authService.onAuthStateChange((updatedUser, event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        // Do not route into normal dashboard session during password recovery
+        return;
+      }
+
       if (updatedUser) {
         setUser(updatedUser);
         setRole(updatedUser.role);
+        recordActivity();
       } else {
         setUser(null);
       }
@@ -75,22 +176,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       subscription?.unsubscribe();
     };
-  }, []);
+  }, [handleInactivityTimeout, recordActivity]);
+
+  // Periodic inactivity checker (every 15 seconds)
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      checkInactivity();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [user, checkInactivity]);
+
+  // Activity listeners for Web runtime
+  useEffect(() => {
+    if (!user) return;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const onUserActivity = () => {
+        recordActivity();
+      };
+
+      window.addEventListener('mousedown', onUserActivity, { passive: true });
+      window.addEventListener('keydown', onUserActivity, { passive: true });
+      window.addEventListener('scroll', onUserActivity, { passive: true });
+      window.addEventListener('touchstart', onUserActivity, { passive: true });
+
+      return () => {
+        window.removeEventListener('mousedown', onUserActivity);
+        window.removeEventListener('keydown', onUserActivity);
+        window.removeEventListener('scroll', onUserActivity);
+        window.removeEventListener('touchstart', onUserActivity);
+      };
+    }
+  }, [user, recordActivity]);
+
+  // AppState listener for Mobile runtime
+  useEffect(() => {
+    if (!user) return;
+
+    const sub = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        checkInactivity();
+      }
+    });
+
+    return () => sub.remove();
+  }, [user, checkInactivity]);
 
   const clearError = () => {
     setAuthError(null);
   };
 
-  const loginWithEmail = async (email: string, password: string) => {
+  const loginWithEmail = async (identifier: string, password: string) => {
     setIsLoading(true);
     setAuthError(null);
     try {
-      const u = await authService.loginWithPassword(email, password);
+      const u = await authService.loginWithPassword(identifier, password);
       setUser(u);
       setRole(u.role);
+      await recordActivity();
     } catch (err: any) {
-      setAuthError(err?.message || 'Login failed. Please check your credentials.');
-      throw err;
+      const friendly = mapFriendlyAuthError(err);
+      setAuthError(friendly);
+      throw new Error(friendly);
     } finally {
       setIsLoading(false);
     }
@@ -103,9 +253,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const u = await authService.login(roleToUse, identifier, password);
       setUser(u);
       setRole(u.role);
+      await recordActivity();
     } catch (err: any) {
-      setAuthError(err?.message || 'Sign in failed. Please verify credentials.');
-      throw err;
+      const friendly = mapFriendlyAuthError(err);
+      setAuthError(friendly);
+      throw new Error(friendly);
     } finally {
       setIsLoading(false);
     }
@@ -114,14 +266,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (payload: RegisterPayload) => {
     setIsLoading(true);
     setAuthError(null);
+    setUser(null);
     try {
-      const u = await authService.register(payload);
-      setUser(u);
-      setRole(u.role);
+      await authService.register(payload);
+      // Registration complete: user is NOT auto-logged in.
+      // Redirects to Sign In to authenticate immediately.
     } catch (err: any) {
-      setAuthError(err?.message || 'Registration failed. Please check details.');
-      throw err;
+      console.error('[AuthContext.register] Registration error caught:', err);
+      const friendly = mapFriendlyAuthError(err);
+      if (
+        friendly.toLowerCase().includes('too many') ||
+        friendly.toLowerCase().includes('wait 60 seconds')
+      ) {
+        setAuthError(null);
+      } else {
+        setAuthError(friendly);
+      }
+      throw new Error(friendly);
     } finally {
+      setUser(null);
       setIsLoading(false);
     }
   };
@@ -133,6 +296,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const u = await authService.switchRole(newRole);
       setUser(u);
       setRole(u.role);
+      await recordActivity();
+    } catch (err: any) {
+      setAuthError(mapFriendlyAuthError(err?.message));
     } finally {
       setIsLoading(false);
     }
@@ -142,11 +308,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     setAuthError(null);
     try {
+      await clearInactivityTimestamp();
       await authService.logout();
-      setUser(null);
     } catch (err: any) {
       console.warn('Logout error:', err?.message || err);
     } finally {
+      setUser(null);
       setIsLoading(false);
     }
   };

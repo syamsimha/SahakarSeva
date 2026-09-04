@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  ScrollView,
 } from 'react-native';
 import { colors, borderRadius, spacing, typography } from '../../theme';
 import { useLanguage } from '../../context/LanguageContext';
@@ -18,10 +19,11 @@ interface LanguageModalProps {
 }
 
 export const LanguageModal: React.FC<LanguageModalProps> = ({ visible, onClose }) => {
-  const { language, setLanguage, supportedLanguages } = useLanguage();
+  const { language, setLanguage, supportedLanguages, t } = useLanguage();
 
-  const handleSelect = (lang: Language) => {
-    setLanguage(lang);
+  const handleSelect = async (lang: Language, isAvailable: boolean) => {
+    if (!isAvailable) return;
+    await setLanguage(lang);
     onClose();
   };
 
@@ -37,44 +39,61 @@ export const LanguageModal: React.FC<LanguageModalProps> = ({ visible, onClose }
           <TouchableWithoutFeedback>
             <View style={styles.content}>
               <View style={styles.header}>
-                <Text style={styles.title}>Select Language / भाषा चुनें</Text>
+                <View>
+                  <Text style={styles.title}>Language / भाषा / భాష</Text>
+                  <Text style={styles.subtitle}>{t('select_language')}</Text>
+                </View>
                 <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                  <Ionicons name="close" size={20} color={colors.textSecondary} />
+                  <Ionicons name="close" size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.list}>
-                {supportedLanguages.map((item) => {
-                  const isSelected = language === item.code;
-                  return (
-                    <TouchableOpacity
-                      key={item.code}
-                      activeOpacity={0.7}
-                      onPress={() => handleSelect(item.code)}
-                      style={[styles.langItem, isSelected && styles.langItemSelected]}
-                    >
-                      <View style={styles.langTexts}>
-                        <Text
-                          style={[
-                            styles.nativeLabel,
-                            isSelected && styles.nativeLabelSelected,
-                          ]}
-                        >
-                          {item.nativeLabel}
-                        </Text>
-                        <Text style={styles.englishLabel}>{item.label}</Text>
-                      </View>
-                      {isSelected && (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={22}
-                          color={colors.primary}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <ScrollView style={styles.scrollList} showsVerticalScrollIndicator={false}>
+                <View style={styles.list}>
+                  {supportedLanguages.map((item) => {
+                    const isSelected = language === item.code;
+                    return (
+                      <TouchableOpacity
+                        key={item.code}
+                        activeOpacity={item.isAvailable ? 0.7 : 1}
+                        onPress={() => handleSelect(item.code, item.isAvailable)}
+                        style={[
+                          styles.langItem,
+                          isSelected && styles.langItemSelected,
+                          !item.isAvailable && styles.langItemDisabled,
+                        ]}
+                      >
+                        <View style={styles.langTexts}>
+                          <View style={styles.labelRow}>
+                            <Text
+                              style={[
+                                styles.nativeLabel,
+                                isSelected && styles.nativeLabelSelected,
+                                !item.isAvailable && styles.nativeLabelDisabled,
+                              ]}
+                            >
+                              {item.nativeLabel}
+                            </Text>
+                            {!item.isAvailable && (
+                              <View style={styles.comingSoonBadge}>
+                                <Text style={styles.comingSoonText}>{t('coming_soon')}</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={styles.englishLabel}>{item.label}</Text>
+                        </View>
+                        {isSelected && (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={22}
+                            color={colors.primary}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
             </View>
           </TouchableWithoutFeedback>
         </View>
@@ -86,22 +105,23 @@ export const LanguageModal: React.FC<LanguageModalProps> = ({ visible, onClose }
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.xl,
+    padding: spacing.lg,
   },
   content: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 380,
+    maxHeight: '80%',
     backgroundColor: colors.surface,
     borderRadius: borderRadius.xl,
     padding: spacing.lg,
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.2,
     shadowRadius: 20,
-    elevation: 8,
+    elevation: 10,
   },
   header: {
     flexDirection: 'row',
@@ -116,11 +136,20 @@ const styles = StyleSheet.create({
     ...typography.h4,
     color: colors.text,
   },
+  subtitle: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   closeBtn: {
     padding: 4,
   },
+  scrollList: {
+    maxHeight: 380,
+  },
   list: {
     gap: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   langItem: {
     flexDirection: 'row',
@@ -129,7 +158,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.background,
   },
@@ -137,8 +166,19 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.primaryLight,
   },
+  langItemDisabled: {
+    opacity: 0.65,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
   langTexts: {
     flexDirection: 'column',
+    flex: 1,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   nativeLabel: {
     fontSize: 16,
@@ -147,6 +187,21 @@ const styles = StyleSheet.create({
   },
   nativeLabelSelected: {
     color: colors.primary,
+  },
+  nativeLabelDisabled: {
+    color: colors.textSecondary,
+  },
+  comingSoonBadge: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  comingSoonText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
   },
   englishLabel: {
     fontSize: 12,

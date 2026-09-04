@@ -12,6 +12,7 @@ import { StatCard, BookingCard } from '../../components/cards';
 import { Button, Badge } from '../../components/ui';
 import { mockAdminStats, mockWorkers } from '../../data';
 import { useBookings } from '../../context/BookingContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { Ionicons } from '@expo/vector-icons';
 
 interface AdminDashboardScreenProps {
@@ -30,6 +31,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   onNavigateToNotifications,
 }) => {
   const { bookings } = useBookings();
+  const { t } = useLanguage();
   const stats = mockAdminStats;
 
   const pendingWorkers = mockWorkers.filter((w) => w.verificationStatus === 'pending');
@@ -37,7 +39,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   return (
     <View style={styles.container}>
       <Header
-        title="Federation Admin"
+        title={t('federation_admin')}
         subtitle="Karnataka State Labour Cooperative Federation"
         onNotificationPress={onNavigateToNotifications}
         unreadNotificationsCount={4}
@@ -48,29 +50,29 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View>
-              <Text style={styles.heroSub}>District Labour Operations</Text>
-              <Text style={styles.heroTitle}>Bengaluru Urban Cluster</Text>
+              <Text style={styles.heroSub}>{t('district_labour_ops')}</Text>
+              <Text style={styles.heroTitle}>{t('urban_cluster')}</Text>
             </View>
             <View style={styles.livePill}>
               <View style={styles.liveDot} />
-              <Text style={styles.liveText}>14 Societies Live</Text>
+              <Text style={styles.liveText}>{t('societies_live')}</Text>
             </View>
           </View>
 
           <View style={styles.heroMetrics}>
             <View style={styles.heroMetricItem}>
               <Text style={styles.heroVal}>{stats.totalRegisteredWorkers}</Text>
-              <Text style={styles.heroLabel}>Total Workers</Text>
+              <Text style={styles.heroLabel}>{t('total_workers')}</Text>
             </View>
             <View style={styles.heroDivider} />
             <View style={styles.heroMetricItem}>
               <Text style={styles.heroVal}>{stats.verifiedWorkersCount}</Text>
-              <Text style={styles.heroLabel}>Verified (95%)</Text>
+              <Text style={styles.heroLabel}>{t('verified_workers_label')}</Text>
             </View>
             <View style={styles.heroDivider} />
             <View style={styles.heroMetricItem}>
               <Text style={styles.heroVal}>{stats.activeBookingsToday}</Text>
-              <Text style={styles.heroLabel}>Active Today</Text>
+              <Text style={styles.heroLabel}>{t('active_bookings_today')}</Text>
             </View>
           </View>
         </View>

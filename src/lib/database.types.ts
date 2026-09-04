@@ -219,7 +219,26 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      sync_current_user_profile: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      get_email_by_phone: {
+        Args: {
+          p_phone: string;
+        };
+        Returns: string | null;
+      };
+      check_profile_exists: {
+        Args: {
+          p_email: string;
+          p_phone: string;
+        };
+        Returns: {
+          email_exists: boolean;
+          phone_exists: boolean;
+        };
+      };
     };
     Enums: {
       app_role: AppRole;
