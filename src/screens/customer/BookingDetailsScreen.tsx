@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,19 @@ import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
 import { Avatar, Badge, Button, MapPlaceholder } from '../../components/ui';
 import { useBookings } from '../../context/BookingContext';
-import { BookingStatus } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
+import { locationService } from '../../services/locationService';
+import { formatTimeAgo, formatCompletedDate } from '../../utils/dateTime';
+import { BookingStatus, WorkerProfile } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
+import { normalizePhoneNumber, triggerPhoneCall } from '../../utils/phone';
+import { workerService } from '../../services/workerService';
 
 interface BookingDetailsScreenProps {
   bookingId: string;
   onNavigateToInvoice: (bookingId: string) => void;
   onNavigateToRate: (bookingId: string) => void;
+  onNavigateToHelp?: (bookingId: string) => void;
   onBack: () => void;
 }
 
@@ -33,10 +39,129 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
   bookingId,
   onNavigateToInvoice,
   onNavigateToRate,
+  onNavigateToHelp,
   onBack,
 }) => {
-  const { bookings, updateStatus } = useBookings();
+  const { t } = useLanguage();
+  const { bookings, updateStatus, updateWorkerLocation } = useBookings();
   const booking = bookings.find((b) => b.id === bookingId);
+
+  const custLat = booking?.serviceLocation?.latitude;
+  const custLng = booking?.serviceLocation?.longitude;
+
+  const [workerCoords, setWorkerCoords] = useState<{ latitude: number; longitude: number; updatedAt?: string } | null>(
+    booking?.workerLocation && typeof booking.workerLocation.latitude === 'number' && typeof booking.workerLocation.longitude === 'number'
+      ? {
+          latitude: booking.workerLocation.latitude,
+          longitude: booking.workerLocation.longitude,
+          updatedAt: booking.workerLocation.updatedAt || new Date().toISOString(),
+        }
+      : null
+  );
+
+  const isTrackingActive = Boolean(
+    booking && (booking.status === 'on_the_way' || booking.status === 'in_progress')
+  );
+
+  const isCompletedOrCancelled = Boolean(
+    booking && (booking.status === 'completed' || booking.status === 'cancelled')
+  );
+
+  // Worker phone retrieval and normalization
+  const [workerRecord, setWorkerRecord] = useState<WorkerProfile | null>(null);
+
+  useEffect(() => {
+    if (booking?.workerId && !booking?.workerPhone) {
+      workerService.getWorkerById(booking.workerId).then((w) => {
+        if (w) setWorkerRecord(w);
+      });
+    }
+  }, [booking?.workerId, booking?.workerPhone]);
+
+  const rawWorkerPhone = booking?.workerPhone || workerRecord?.phone;
+  const phoneInfo = normalizePhoneNumber(rawWorkerPhone);
+
+  const handleCallWorker = async () => {
+    if (!phoneInfo.isValid || !phoneInfo.telUrl) {
+      Alert.alert(
+        'Phone Unavailable',
+        t('worker_phone_unavailable') || 'Worker phone number unavailable.'
+      );
+      return;
+    }
+
+    const res = await triggerPhoneCall(phoneInfo.normalized);
+    if (!res.success && res.error) {
+      Alert.alert('Phone Call', res.error);
+    }
+  };
+
+  const liveDistance =
+    custLat != null && custLng != null && workerCoords != null
+      ? locationService.calculateDistance(
+          custLat,
+          custLng,
+          workerCoords.latitude,
+          workerCoords.longitude
+        )
+      : null;
+  const liveEtaMinutes = liveDistance != null ? Math.max(1, Math.round(liveDistance * 4)) : null;
+
+  // Poll for genuine worker location updates every 3 seconds while tracking is active
+  useEffect(() => {
+    if (!isTrackingActive) return;
+
+    const interval = setInterval(() => {
+      const current = bookings.find((b) => b.id === bookingId);
+      if (
+        current?.workerLocation &&
+        typeof current.workerLocation.latitude === 'number' &&
+        typeof current.workerLocation.longitude === 'number'
+      ) {
+        setWorkerCoords({
+          latitude: current.workerLocation.latitude,
+          longitude: current.workerLocation.longitude,
+          updatedAt: current.workerLocation.updatedAt || new Date().toISOString(),
+        });
+      } else {
+        setWorkerCoords(null);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isTrackingActive, bookingId, bookings]);
+
+  // Sync state when booking changes
+  useEffect(() => {
+    if (
+      booking?.workerLocation &&
+      typeof booking.workerLocation.latitude === 'number' &&
+      typeof booking.workerLocation.longitude === 'number'
+    ) {
+      setWorkerCoords({
+        latitude: booking.workerLocation.latitude,
+        longitude: booking.workerLocation.longitude,
+        updatedAt: booking.workerLocation.updatedAt,
+      });
+    } else {
+      setWorkerCoords(null);
+    }
+  }, [booking?.workerLocation]);
+
+  const handleRefreshLocation = () => {
+    const current = bookings.find((b) => b.id === bookingId);
+    if (
+      current?.workerLocation &&
+      typeof current.workerLocation.latitude === 'number' &&
+      typeof current.workerLocation.longitude === 'number'
+    ) {
+      setWorkerCoords({
+        latitude: current.workerLocation.latitude,
+        longitude: current.workerLocation.longitude,
+        updatedAt: current.workerLocation.updatedAt || new Date().toISOString(),
+      });
+    }
+  };
 
   if (!booking) {
     return (
@@ -65,7 +190,7 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
 
   return (
     <View style={styles.container}>
-      <Header title="Booking Status" showBack onBack={onBack} />
+      <Header title={t('booking_details_title')} showBack onBack={onBack} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Top Header Card */}
@@ -75,21 +200,36 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
               <Text style={styles.codeText}>{booking.bookingCode}</Text>
               <Text style={styles.serviceTitle}>{booking.serviceTitle}</Text>
             </View>
-            <Badge status={booking.status} />
+            <View style={{ alignItems: 'flex-end' }}>
+              <Badge status={booking.status} />
+              {booking.isPriority && (
+                <View style={styles.priorityBadgeSmall}>
+                  <Ionicons name="flash" size={10} color={colors.danger} />
+                  <Text style={styles.priorityBadgeTextSmall}>{t('priority_badge')}</Text>
+                </View>
+              )}
+            </View>
           </View>
           <Text style={styles.dateText}>
-            {booking.scheduledDate} • {booking.scheduledTimeSlot}
+            {booking.status === 'completed'
+              ? t('completed_on', {
+                  date: formatCompletedDate(
+                    booking.completedAt ||
+                      booking.statusHistory?.find((s) => s.status === 'completed')?.timestamp
+                  ),
+                })
+              : `${booking.scheduledDate} • ${booking.scheduledTimeSlot}`}
           </Text>
         </View>
 
         {/* Interactive Status Progression Timeline */}
         <View style={styles.timelineCard}>
           <View style={styles.timelineHeader}>
-            <Text style={styles.cardTitle}>Live Status Progression</Text>
+            <Text style={styles.cardTitle}>{t('live_status_progression')}</Text>
             {currentStepIdx < statusSteps.length - 1 && (
               <TouchableOpacity onPress={handleSimulateNextStatus} style={styles.simBtn}>
                 <Ionicons name="play-forward" size={12} color={colors.primary} />
-                <Text style={styles.simBtnText}>Advance Status (Demo)</Text>
+                <Text style={styles.simBtnText}>{t('advance_status_demo')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -98,6 +238,7 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
             {statusSteps.map((step, idx) => {
               const isPast = idx <= currentStepIdx;
               const isCurrent = idx === currentStepIdx;
+              const stepLabel = t(('status_' + step.key) as any) || step.label;
 
               return (
                 <View key={step.key} style={styles.stepCol}>
@@ -121,7 +262,7 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
                       isCurrent && styles.stepLabelCurrent,
                     ]}
                   >
-                    {step.label}
+                    {stepLabel}
                   </Text>
                 </View>
               );
@@ -129,17 +270,104 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
           </View>
         </View>
 
-        {/* Map Tracker Preview if On The Way or In Progress */}
-        {(booking.status === 'on_the_way' || booking.status === 'in_progress') && (
+        {/* Real Live Worker Tracking Section */}
+        {isTrackingActive && (
           <View style={styles.mapSection}>
-            <Text style={styles.sectionTitle}>Worker Approaching</Text>
-            <MapPlaceholder height={180} locationName={booking.serviceLocation.addressLine} />
+            <View style={styles.trackingHeaderRow}>
+              <View style={styles.pulseRedDot} />
+              <Text style={styles.sectionTitle}>
+                {booking.status === 'on_the_way'
+                  ? t('live_dispatch_worker_approaching')
+                  : t('live_service_in_progress')}
+              </Text>
+            </View>
+
+            {workerCoords ? (
+              <>
+                <MapPlaceholder
+                  height={220}
+                  latitude={custLat}
+                  longitude={custLng}
+                  locationName={booking.serviceLocation.addressLine}
+                  isGps={true}
+                  trackingWorker={{
+                    name: booking.workerName,
+                    skill: booking.workerSkill,
+                    latitude: workerCoords.latitude,
+                    longitude: workerCoords.longitude,
+                    updatedAt: workerCoords.updatedAt,
+                  }}
+                />
+
+                {/* Live Metrics Card */}
+                <View style={styles.trackingMetricsCard}>
+                  <View style={styles.metricItem}>
+                    <Ionicons name="navigate-outline" size={16} color={colors.primary} />
+                    <Text style={styles.metricLabel}>{t('real_distance')}</Text>
+                    <Text style={styles.metricValue}>
+                      {liveDistance != null ? `${liveDistance} km` : '--'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metricDivider} />
+
+                  <View style={styles.metricItem}>
+                    <Ionicons name="time-outline" size={16} color={colors.info} />
+                    <Text style={styles.metricLabel}>{t('estimated_arrival')}</Text>
+                    <Text style={styles.metricValue}>
+                      {liveEtaMinutes != null ? `~${liveEtaMinutes} mins` : '--'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metricDivider} />
+
+                  <View style={styles.metricItem}>
+                    <Ionicons name="sync-outline" size={16} color={colors.textMuted} />
+                    <Text style={styles.metricLabel}>{t('last_updated')}</Text>
+                    <Text style={styles.metricValue}>
+                      {workerCoords.updatedAt ? formatTimeAgo(workerCoords.updatedAt) : 'Just now'}
+                    </Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.unavailableBox}>
+                <Ionicons name="location-outline" size={32} color={colors.textMuted} />
+                <Text style={styles.unavailableTitle}>{t('worker_location_unavailable')}</Text>
+                <Text style={styles.unavailableSub}>
+                  {t('worker_location_unavailable_desc')}
+                </Text>
+                <TouchableOpacity onPress={handleRefreshLocation} style={styles.refreshBtn}>
+                  <Ionicons name="refresh" size={14} color={colors.primary} />
+                  <Text style={styles.refreshBtnText}>{t('refresh_location')}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Tracking Termination for Completed/Cancelled Bookings */}
+        {isCompletedOrCancelled && (
+          <View style={styles.completedNoticeBox}>
+            <Ionicons
+              name={booking.status === 'completed' ? 'checkmark-circle' : 'close-circle'}
+              size={20}
+              color={booking.status === 'completed' ? colors.success : colors.danger}
+            />
+            <View style={{ marginLeft: 8, flex: 1 }}>
+              <Text style={styles.completedNoticeTitle}>
+                {booking.status === 'completed' ? t('job_completed') : t('job_cancelled')}
+              </Text>
+              <Text style={styles.completedNoticeSub}>
+                {t('location_sharing_ended')}
+              </Text>
+            </View>
           </View>
         )}
 
         {/* Assigned Worker Details Card */}
         <View style={styles.workerCard}>
-          <Text style={styles.cardTitle}>Assigned Cooperative Worker</Text>
+          <Text style={styles.cardTitle}>{t('assigned_worker')}</Text>
           <View style={styles.workerRow}>
             <Avatar name={booking.workerName} size={50} showVerifiedBadge />
             <View style={styles.workerInfo}>
@@ -150,19 +378,52 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
           </View>
 
           <View style={styles.contactRow}>
-            <TouchableOpacity
-              onPress={() => Alert.alert('Call Worker', `Dialing ${booking.workerPhone}...`)}
-              style={styles.callBtn}
-            >
-              <Ionicons name="call" size={15} color={colors.primary} />
-              <Text style={styles.callBtnText}>Call {booking.workerPhone}</Text>
-            </TouchableOpacity>
+            {phoneInfo.isValid ? (
+              <TouchableOpacity
+                onPress={handleCallWorker}
+                style={styles.callBtn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Call ${booking.workerName} at ${phoneInfo.display}`}
+              >
+                <Ionicons name="call" size={15} color={colors.primary} />
+                <Text style={styles.callBtnText}>
+                  {t('call_worker_phone', { phone: phoneInfo.display })}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.callBtnDisabled}>
+                <Ionicons name="call-outline" size={15} color={colors.textMuted} />
+                <Text style={styles.callBtnTextDisabled}>
+                  {t('worker_phone_unavailable')}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
         {/* Service Address & Notes */}
         <View style={styles.detailsBox}>
-          <Text style={styles.cardTitle}>Service Address & Notes</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs }}>
+            <Text style={styles.cardTitle}>{t('service_address_notes')}</Text>
+            <View style={[
+              styles.locationModeBadge,
+              booking.serviceLocation.locationMode === 'MANUAL' ? styles.locationModeBadgeManual : styles.locationModeBadgeGps
+            ]}>
+              <Ionicons
+                name={booking.serviceLocation.locationMode === 'MANUAL' ? 'create-outline' : 'navigate'}
+                size={11}
+                color={booking.serviceLocation.locationMode === 'MANUAL' ? colors.primary : colors.info}
+                style={{ marginRight: 3 }}
+              />
+              <Text style={[
+                styles.locationModeBadgeText,
+                booking.serviceLocation.locationMode === 'MANUAL' ? styles.locationModeBadgeTextManual : styles.locationModeBadgeTextGps
+              ]}>
+                {booking.serviceLocation.locationMode === 'MANUAL' ? 'MANUAL ENTRY' : 'GPS LOCATION'}
+              </Text>
+            </View>
+          </View>
           <View style={styles.metaRow}>
             <Ionicons name="location-outline" size={16} color={colors.primary} />
             <Text style={styles.metaText}>{booking.serviceLocation.addressLine}</Text>
@@ -177,9 +438,9 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
 
         {/* Pricing & Invoice */}
         <View style={styles.pricingCard}>
-          <Text style={styles.cardTitle}>Payment Details</Text>
+          <Text style={styles.cardTitle}>{t('confirm_booking')}</Text>
           <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Estimated Fair Fare</Text>
+            <Text style={styles.priceLabel}>{t('estimated_fair_wage')}</Text>
             <Text style={styles.priceVal}>₹{booking.estimatedAmount}</Text>
           </View>
           <View style={styles.priceRow}>
@@ -189,7 +450,7 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
 
           <View style={styles.actionBtnsRow}>
             <Button
-              title="View Invoice"
+              title={t('view_invoice')}
               icon="receipt-outline"
               onPress={() => onNavigateToInvoice(booking.id)}
               variant="outline"
@@ -198,7 +459,7 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
             />
             {booking.status === 'completed' && (
               <Button
-                title="Rate Worker"
+                title={t('rate_service')}
                 icon="star"
                 onPress={() => onNavigateToRate(booking.id)}
                 variant="secondary"
@@ -207,6 +468,17 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
               />
             )}
           </View>
+
+          {onNavigateToHelp && (
+            <TouchableOpacity
+              onPress={() => onNavigateToHelp(booking.id)}
+              style={styles.needHelpBtn}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="help-circle-outline" size={16} color={colors.primary} />
+              <Text style={styles.needHelpText}>{t('need_help_with_booking')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -379,14 +651,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primaryLight,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 122, 95, 0.25)',
   },
   callBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.primary,
-    marginLeft: 6,
+    marginLeft: 8,
+  },
+  callBtnDisabled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  callBtnTextDisabled: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textMuted,
+    marginLeft: 8,
   },
   detailsBox: {
     backgroundColor: colors.surface,
@@ -395,6 +687,33 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  locationModeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: borderRadius.xs,
+  },
+  locationModeBadgeGps: {
+    backgroundColor: 'rgba(37, 99, 235, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.3)',
+  },
+  locationModeBadgeManual: {
+    backgroundColor: 'rgba(13, 122, 95, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(13, 122, 95, 0.3)',
+  },
+  locationModeBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  locationModeBadgeTextGps: {
+    color: colors.info,
+  },
+  locationModeBadgeTextManual: {
+    color: colors.primary,
   },
   metaRow: {
     flexDirection: 'row',
@@ -432,5 +751,145 @@ const styles = StyleSheet.create({
   actionBtnsRow: {
     flexDirection: 'row',
     marginTop: spacing.md,
+  },
+  priorityBadgeSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.dangerLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: borderRadius.xs,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(220, 38, 38, 0.3)',
+  },
+  priorityBadgeTextSmall: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.danger,
+    marginLeft: 3,
+  },
+  trackingHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  pulseRedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.danger,
+    marginRight: 6,
+  },
+  trackingMetricsCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  metricItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  metricLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  metricValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 1,
+  },
+  metricDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: colors.divider,
+  },
+  unavailableBox: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.xs,
+  },
+  unavailableTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  unavailableSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: spacing.md,
+  },
+  refreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryLight,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 122, 95, 0.2)',
+  },
+  refreshBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    marginLeft: 6,
+  },
+  completedNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  completedNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  completedNoticeSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  needHelpBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 6,
+  },
+  needHelpText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
   },
 });

@@ -6,3 +6,4 @@ export * from './locationService';
 export * from './notificationService';
 export * from './analyticsService';
 export * from './welfareService';
+export * from './invoiceShareService';

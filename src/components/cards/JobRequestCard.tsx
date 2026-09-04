@@ -19,12 +19,20 @@ export const JobRequestCard: React.FC<JobRequestCardProps> = ({
   onViewDetails,
 }) => {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, booking.isPriority && styles.priorityContainer]}>
       {/* Top Banner */}
       <View style={styles.topRow}>
-        <View style={styles.newBadge}>
-          <View style={styles.pulseDot} />
-          <Text style={styles.newBadgeText}>New Request</Text>
+        <View style={styles.badgeRow}>
+          {booking.isPriority && (
+            <View style={styles.priorityBadge}>
+              <Ionicons name="flash" size={11} color="#FFFFFF" />
+              <Text style={styles.priorityBadgeText}>PRIORITY 24/7</Text>
+            </View>
+          )}
+          <View style={styles.newBadge}>
+            <View style={styles.pulseDot} />
+            <Text style={styles.newBadgeText}>New Request</Text>
+          </View>
         </View>
         <Text style={styles.timestamp}>Expires in 15m</Text>
       </View>
@@ -108,11 +116,36 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  priorityContainer: {
+    borderColor: colors.danger,
+    borderWidth: 2,
+    backgroundColor: '#FFFBFB',
+  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: spacing.xs,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  priorityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.danger,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: borderRadius.round,
+    marginRight: 6,
+  },
+  priorityBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginLeft: 3,
+    letterSpacing: 0.5,
   },
   newBadge: {
     flexDirection: 'row',

@@ -25,24 +25,24 @@ export const Header: React.FC<HeaderProps> = ({
   showBack = false,
   onBack,
   showLocation = false,
-  locationName = 'Indiranagar, Bengaluru',
+  locationName = 'Select Location',
   onNotificationPress,
   unreadNotificationsCount = 2,
   onLocationPress,
 }) => {
   const { role } = useAuth();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const [langModalVisible, setLangModalVisible] = useState(false);
   const [roleModalVisible, setRoleModalVisible] = useState(false);
 
   const getRoleLabel = () => {
     switch (role) {
       case 'worker':
-        return 'Worker';
+        return t('worker');
       case 'admin':
-        return 'Admin';
+        return t('admin');
       default:
-        return 'Customer';
+        return t('customer');
     }
   };
 
@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <View style={styles.locationHeaderRow}>
                 <Ionicons name="location" size={14} color={colors.primary} />
-                <Text style={styles.locationLabel}>Current Location</Text>
+                <Text style={styles.locationLabel}>{t('location_current')}</Text>
                 <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
               </View>
               <Text style={styles.locationValue} numberOfLines={1}>
@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <Ionicons name="people" size={16} color={colors.textInverse} />
               </View>
               <View>
-                <Text style={styles.brandTitle}>{title || 'Sahakar Sathi'}</Text>
+                <Text style={styles.brandTitle}>{title || t('app_name')}</Text>
                 {subtitle && <Text style={styles.brandSubtitle}>{subtitle}</Text>}
               </View>
             </View>

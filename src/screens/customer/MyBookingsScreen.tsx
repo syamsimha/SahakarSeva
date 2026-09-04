@@ -11,6 +11,8 @@ import { Header } from '../../components/common';
 import { BookingCard } from '../../components/cards';
 import { EmptyState } from '../../components/ui';
 import { useBookings } from '../../context/BookingContext';
+import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { BookingStatus, Booking } from '../../types';
 
 interface MyBookingsScreenProps {
@@ -31,12 +33,18 @@ export const MyBookingsScreen: React.FC<MyBookingsScreenProps> = ({
   onBack,
 }) => {
   const { bookings } = useBookings();
+  const { user } = useAuth();
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<TabKey>('active');
+
+  const customerBookings = bookings.filter(
+    (b) => !b.id.startsWith('bk-2024-') && (!user || b.customerId === user.id)
+  );
 
   const filterBookings = (tab: TabKey): Booking[] => {
     switch (tab) {
       case 'active':
-        return bookings.filter(
+        return customerBookings.filter(
           (b) =>
             b.status === 'in_progress' ||
             b.status === 'on_the_way' ||
@@ -44,29 +52,31 @@ export const MyBookingsScreen: React.FC<MyBookingsScreenProps> = ({
             b.status === 'requested'
         );
       case 'upcoming':
-        return bookings.filter(
+        return customerBookings.filter(
           (b) => b.status === 'requested' || b.status === 'accepted'
         );
       case 'completed':
-        return bookings.filter((b) => b.status === 'completed');
+        return customerBookings.filter((b) => b.status === 'completed');
       case 'cancelled':
-        return bookings.filter((b) => b.status === 'cancelled');
+        return customerBookings.filter((b) => b.status === 'cancelled');
     }
   };
 
   const displayedBookings = filterBookings(activeTab);
 
   const tabs: Array<{ id: TabKey; label: string }> = [
-    { id: 'active', label: 'Active & In-Flight' },
-    { id: 'upcoming', label: 'Upcoming' },
-    { id: 'completed', label: 'Completed' },
-    { id: 'cancelled', label: 'Cancelled' },
+    { id: 'active', label: t('tab_active') },
+    { id: 'upcoming', label: t('tab_upcoming') },
+    { id: 'completed', label: t('tab_completed') },
+    { id: 'cancelled', label: t('tab_cancelled') },
   ];
+
+  const currentTabLabel = tabs.find((tb) => tb.id === activeTab)?.label || activeTab;
 
   return (
     <View style={styles.container}>
       <Header
-        title="My Bookings"
+        title={t('my_bookings_title')}
         showBack={Boolean(onBack)}
         onBack={onBack}
       />
@@ -106,9 +116,9 @@ export const MyBookingsScreen: React.FC<MyBookingsScreenProps> = ({
         ListEmptyComponent={
           <EmptyState
             icon="calendar-outline"
-            title={`No ${activeTab} bookings`}
-            message="Your booked cooperative services will show up here with live status updates."
-            actionTitle="Browse Services"
+            title={t('no_bookings_title', { tab: currentTabLabel })}
+            message={t('no_bookings_desc')}
+            actionTitle={t('browse_services')}
             onAction={onNavigateToServices}
           />
         }

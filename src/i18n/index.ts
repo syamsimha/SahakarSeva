@@ -22,9 +22,19 @@ const translations: Record<Language, Record<TranslationKey, string>> = {
   te,
 };
 
-export const translate = (key: TranslationKey, lang: Language = 'en'): string => {
+export const translate = (
+  key: TranslationKey,
+  lang: Language = 'en',
+  params?: Record<string, string | number>
+): string => {
   const dict = translations[lang] || translations.en;
-  return dict[key] || translations.en[key] || key;
+  let text = dict[key] || translations.en[key] || (key as string);
+  if (params) {
+    Object.entries(params).forEach(([paramKey, val]) => {
+      text = text.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(val));
+    });
+  }
+  return text;
 };
 
 export * from './en';

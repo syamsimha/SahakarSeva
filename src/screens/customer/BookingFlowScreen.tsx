@@ -17,11 +17,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useBookings } from '../../context/BookingContext';
 import { WorkerProfile, ServiceCategoryKey, Booking, Customer } from '../../types';
 import { filterWorkersByCategory } from './customerWorkerFilter';
+import { getDynamicDateOptions } from '../../utils/dateTime';
+import { LocationCoords } from '../../services/locationService';
 import { Ionicons } from '@expo/vector-icons';
 
 interface BookingFlowScreenProps {
   initialWorkerId?: string;
   initialServiceId?: string;
+  customerLocation?: LocationCoords;
   onBookingSuccess: (booking: Booking) => void;
   onCancel: () => void;
 }
@@ -29,6 +32,7 @@ interface BookingFlowScreenProps {
 export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   initialWorkerId,
   initialServiceId,
+  customerLocation,
   onBookingSuccess,
   onCancel,
 }) => {
@@ -51,16 +55,17 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>(initialWorkerId || 'worker-101');
 
   // Step 3: Date
-  const [selectedDate, setSelectedDate] = useState<string>('Today, 2 March');
+  const dateOptions = getDynamicDateOptions(5);
+  const [selectedDate, setSelectedDate] = useState<string>(dateOptions[0].value);
 
   // Step 4: Time Slot
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('10:00 AM - 12:00 PM');
 
   // Step 5: Location
   const [addressLine, setAddressLine] = useState(
-    user?.address || 'Flat 402, Shanti Niketan Apts, 12th Main, Indiranagar'
+    customerLocation?.address || user?.address || 'Current Location'
   );
-  const [landmark, setLandmark] = useState('Opposite Defense Colony Park');
+  const [landmark, setLandmark] = useState('');
 
   // Step 6: Instructions
   const [instructions, setInstructions] = useState('');
@@ -68,6 +73,7 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   // Step 8: Payment
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'netbanking' | 'cash'>('upi');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPriority, setIsPriority] = useState(false);
 
   // Sync category if worker was provided initially
   useEffect(() => {
@@ -121,7 +127,8 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   const baseRate = currentSubService?.standardPrice || selectedWorker?.baseRate || 299;
   const welfareCess = Math.round(baseRate * 0.05); // 5%
   const gst = Math.round(baseRate * 0.05); // 5%
-  const totalAmount = baseRate + welfareCess + gst;
+  const priorityFee = isPriority ? 150 : 0;
+  const totalAmount = baseRate + welfareCess + gst + priorityFee;
 
   const handleNext = () => {
     if (currentStep < totalSteps) {
@@ -159,15 +166,18 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
         serviceLocation: {
           addressLine,
           landmark,
-          city: 'Bengaluru',
-          pincode: '560038',
-          latitude: 12.9784,
-          longitude: 77.6408,
+          city: customerLocation?.city || customer?.city || 'Local Area',
+          pincode: customerLocation?.pincode || '400001',
+          latitude: customerLocation?.coordinatesAvailable !== false ? customerLocation?.latitude : undefined,
+          longitude: customerLocation?.coordinatesAvailable !== false ? customerLocation?.longitude : undefined,
+          locationMode: customerLocation?.locationMode || (customerLocation?.isGps ? 'GPS' : 'MANUAL'),
+          manualDetails: customerLocation?.manualDetails,
         },
         instructions: instructions || 'Standard cooperative service request',
         estimatedAmount: totalAmount,
         welfareCessAmount: welfareCess,
-        isEmergency: false,
+        isPriority: isPriority,
+        isEmergency: isPriority,
         paymentMethod,
         paymentStatus: 'pending',
       });
@@ -184,13 +194,6 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
     '02:00 PM - 04:00 PM',
     '04:30 PM - 06:30 PM',
     '06:30 PM - 08:30 PM',
-  ];
-
-  const dateOptions = [
-    { label: 'Today', value: 'Today, 2 March' },
-    { label: 'Tomorrow', value: 'Tomorrow, 3 March' },
-    { label: 'Mon, 4 Mar', value: 'Monday, 4 March' },
-    { label: 'Tue, 5 Mar', value: 'Tuesday, 5 March' },
   ];
 
   return (
@@ -424,9 +427,17 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
             />
 
             <View style={styles.locationTrustNotice}>
-              <Ionicons name="location" size={16} color={colors.primary} />
+              <Ionicons
+                name={customerLocation?.isGps ? 'navigate' : customerLocation?.locationMode === 'MANUAL' ? 'create' : 'location'}
+                size={16}
+                color={customerLocation?.isGps ? colors.info : colors.primary}
+              />
               <Text style={styles.locationTrustText}>
-                Zone: Indiranagar Cooperative Guild Hub (Bengaluru)
+                {customerLocation?.isGps
+                  ? `Source: Live GPS Coordinates (${customerLocation.latitude?.toFixed(4)}, ${customerLocation.longitude?.toFixed(4)})`
+                  : customerLocation?.locationMode === 'MANUAL'
+                  ? `Source: Manual Address Entry ${customerLocation.coordinatesAvailable === false ? '(Offline Mode)' : ''}`
+                  : `Zone: ${customerLocation?.city || 'Local Area'} Cooperative Guild Hub`}
               </Text>
             </View>
           </View>
@@ -494,8 +505,36 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryLabel}>Service Location</Text>
                 <Text style={styles.summaryValue}>{addressLine}</Text>
+                <Text style={{ fontSize: 11, color: colors.primary, marginTop: 2, fontWeight: '600' }}>
+                  {customerLocation?.locationMode === 'MANUAL' ? '📍 Source: Manual Address Entry' : '📍 Source: Live Device GPS'}
+                </Text>
               </View>
             </View>
+
+            {/* Priority 24/7 Option Toggle */}
+            <TouchableOpacity
+              style={[styles.priorityCard, isPriority && styles.priorityCardActive]}
+              onPress={() => setIsPriority(!isPriority)}
+            >
+              <View style={styles.priorityLeft}>
+                <Ionicons
+                  name="flash"
+                  size={20}
+                  color={isPriority ? colors.danger : colors.textMuted}
+                />
+                <View style={{ marginLeft: 10, flex: 1 }}>
+                  <Text style={styles.priorityTitle}>Priority 24/7 Urgent Dispatch</Text>
+                  <Text style={styles.priorityDesc}>
+                    Fast-track cooperative technician dispatch (+₹150 priority fee)
+                  </Text>
+                </View>
+              </View>
+              <Ionicons
+                name={isPriority ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={isPriority ? colors.danger : colors.textMuted}
+              />
+            </TouchableOpacity>
 
             {/* Fair-Wage Price Breakdown */}
             <View style={styles.breakdownBox}>
@@ -512,6 +551,12 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
                 <Text style={styles.breakdownLabel}>GST (5%)</Text>
                 <Text style={styles.breakdownAmount}>₹{gst}</Text>
               </View>
+              {isPriority && (
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Priority 24/7 Dispatch Fee</Text>
+                  <Text style={[styles.breakdownAmount, { color: colors.danger }]}>₹{priorityFee}</Text>
+                </View>
+              )}
               <View style={styles.breakdownTotalRow}>
                 <Text style={styles.totalLabel}>Total Payable</Text>
                 <Text style={styles.totalAmount}>₹{totalAmount}</Text>
@@ -924,6 +969,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginTop: 1,
+  },
+  priorityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  priorityCardActive: {
+    borderColor: colors.danger,
+    backgroundColor: '#FFFBFB',
+  },
+  priorityLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  priorityTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  priorityDesc: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   breakdownBox: {
     backgroundColor: colors.primarySurface,

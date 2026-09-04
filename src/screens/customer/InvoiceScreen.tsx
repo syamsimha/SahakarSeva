@@ -1,10 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
 import { Button } from '../../components/ui';
 import { useBookings } from '../../context/BookingContext';
-import { bookingService } from '../../services';
+import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
+import { bookingService, invoiceShareService } from '../../services';
 import { Ionicons } from '@expo/vector-icons';
 
 interface InvoiceScreenProps {
@@ -13,33 +15,184 @@ interface InvoiceScreenProps {
 }
 
 export const InvoiceScreen: React.FC<InvoiceScreenProps> = ({ bookingId, onBack }) => {
+  const { user } = useAuth();
+  const { t } = useLanguage();
   const { bookings } = useBookings();
   const booking = bookings.find((b) => b.id === bookingId);
+
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
 
   if (!booking) {
     return (
       <View style={styles.container}>
-        <Header title="Tax Invoice" showBack onBack={onBack} />
-        <View style={styles.center}><Text>Invoice not found</Text></View>
+        <Header title={t('tax_invoice_title')} showBack onBack={onBack} />
+        <View style={styles.center}>
+          <Ionicons name="document-text-outline" size={48} color={colors.textMuted} />
+          <Text style={styles.notFoundText}>{t('invoice_not_found')}</Text>
+          <Button
+            title={t('back')}
+            onPress={onBack}
+            variant="outline"
+            size="sm"
+            style={{ marginTop: spacing.md }}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  // Security Check: Customers may only view/download their own booking invoice
+  const isAuthorized =
+    !user ||
+    user.role !== 'customer' ||
+    booking.customerId === user.id;
+
+  if (!isAuthorized) {
+    return (
+      <View style={styles.container}>
+        <Header title={t('tax_invoice_title')} showBack onBack={onBack} />
+        <View style={styles.unauthorizedBox}>
+          <Ionicons name="shield-outline" size={56} color={colors.danger} />
+          <Text style={styles.unauthorizedTitle}>{t('unauthorized_invoice')}</Text>
+          <Text style={styles.unauthorizedDesc}>
+            In accordance with cooperative privacy safeguards, invoices are restricted exclusively to the customer who commissioned this booking.
+          </Text>
+          <Button
+            title={t('back')}
+            onPress={onBack}
+            variant="primary"
+            size="md"
+            style={{ marginTop: spacing.lg }}
+          />
+        </View>
       </View>
     );
   }
 
   const invoice = bookingService.generateInvoice(booking);
 
-  const handleShare = () => {
-    Alert.alert('Share Invoice', `Sharing Tax Invoice ${invoice.invoiceNumber} (Mock export).`);
+  // Real PDF Download Action
+  const handleDownload = async () => {
+    if (isDownloading || isSharing) return;
+    setIsDownloading(true);
+    setFeedback(null);
+
+    try {
+      const result = await invoiceShareService.downloadInvoicePdf(invoice, booking);
+      if (result.success) {
+        setFeedback({
+          type: 'success',
+          text: `${t('pdf_downloaded')} (${result.filename})`,
+        });
+        Alert.alert(
+          t('download_pdf'),
+          `${t('pdf_downloaded')}\n\nFile: ${result.filename}`
+        );
+      } else {
+        setFeedback({
+          type: 'error',
+          text: result.error || 'Failed to generate and download PDF.',
+        });
+        Alert.alert('Download Error', result.error || 'Failed to generate PDF.');
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        text: err?.message || 'Error downloading invoice PDF.',
+      });
+      Alert.alert('Download Error', err?.message || 'Error downloading invoice PDF.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
-  const handleDownload = () => {
-    Alert.alert('Download PDF', `Tax invoice ${invoice.invoiceNumber} downloaded to device (Mock PDF).`);
+  // Real Share Action with Web Share API and desktop fallback
+  const handleShare = async () => {
+    if (isDownloading || isSharing) return;
+    setIsSharing(true);
+    setFeedback(null);
+
+    try {
+      const result = await invoiceShareService.shareInvoice(invoice, booking);
+
+      if (result.success) {
+        setFeedback({
+          type: 'success',
+          text: 'Invoice shared successfully.',
+        });
+      } else if (result.cancelled) {
+        setFeedback({
+          type: 'info',
+          text: t('share_cancelled'),
+        });
+      } else if (result.unsupported && result.fallbackDownloaded) {
+        setFeedback({
+          type: 'info',
+          text: t('share_not_supported'),
+        });
+        Alert.alert(
+          'Browser Share Unsupported',
+          t('share_not_supported')
+        );
+      } else {
+        setFeedback({
+          type: 'error',
+          text: result.error || t('share_failed'),
+        });
+        Alert.alert('Share Failed', result.error || t('share_failed'));
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        text: err?.message || t('share_failed'),
+      });
+      Alert.alert('Share Error', err?.message || t('share_failed'));
+    } finally {
+      setIsSharing(false);
+    }
   };
+
+  const isPaid = invoice.paymentStatus === 'paid';
 
   return (
     <View style={styles.container}>
-      <Header title="Cooperative Tax Invoice" showBack onBack={onBack} />
+      <Header title={t('tax_invoice_title')} showBack onBack={onBack} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Real Feedback Status Banner */}
+        {feedback && (
+          <View
+            style={[
+              styles.feedbackBanner,
+              feedback.type === 'success' && styles.feedbackSuccess,
+              feedback.type === 'info' && styles.feedbackInfo,
+              feedback.type === 'error' && styles.feedbackError,
+            ]}
+          >
+            <Ionicons
+              name={
+                feedback.type === 'success'
+                  ? 'checkmark-circle'
+                  : feedback.type === 'info'
+                  ? 'information-circle'
+                  : 'alert-circle'
+              }
+              size={18}
+              color={
+                feedback.type === 'success'
+                  ? colors.success
+                  : feedback.type === 'info'
+                  ? colors.info
+                  : colors.danger
+              }
+            />
+            <Text style={styles.feedbackText}>{feedback.text}</Text>
+          </View>
+        )}
+
+        {/* Paper Invoice Card */}
         <View style={styles.paperCard}>
           {/* Invoice Header */}
           <View style={styles.paperHeader}>
@@ -48,20 +201,32 @@ export const InvoiceScreen: React.FC<InvoiceScreenProps> = ({ bookingId, onBack 
               <Text style={styles.societySub}>{invoice.cooperativeName}</Text>
               <Text style={styles.societyReg}>Reg No: {invoice.societyRegNo}</Text>
             </View>
-            <View style={styles.paidBadge}>
-              <Text style={styles.paidText}>PAID RECEIPT</Text>
+            <View style={[styles.paidBadge, !isPaid && styles.unpaidBadge]}>
+              <Text style={[styles.paidText, !isPaid && styles.unpaidText]}>
+                {isPaid ? 'PAID RECEIPT' : 'CONFIRMED INVOICE'}
+              </Text>
             </View>
           </View>
 
+          {/* Priority Emergency Banner */}
+          {(booking.isPriority || booking.isEmergency) && (
+            <View style={styles.priorityBanner}>
+              <Ionicons name="flash" size={14} color="#B45309" />
+              <Text style={styles.priorityBannerText}>
+                PRIORITY 24/7 RAPID EMERGENCY COOPERATIVE DISPATCH
+              </Text>
+            </View>
+          )}
+
           <View style={styles.divider} />
 
-          {/* Invoice Meta */}
+          {/* Invoice Meta Grid */}
           <View style={styles.metaGrid}>
             <View style={styles.metaCol}>
               <Text style={styles.metaLabel}>Invoice No:</Text>
               <Text style={styles.metaVal}>{invoice.invoiceNumber}</Text>
               <Text style={[styles.metaLabel, { marginTop: 6 }]}>Booking ID:</Text>
-              <Text style={styles.metaVal}>{booking.bookingCode}</Text>
+              <Text style={styles.metaVal}>{booking.bookingCode || booking.id}</Text>
             </View>
             <View style={[styles.metaCol, { alignItems: 'flex-end' }]}>
               <Text style={styles.metaLabel}>Date Issued:</Text>
@@ -73,18 +238,20 @@ export const InvoiceScreen: React.FC<InvoiceScreenProps> = ({ bookingId, onBack 
 
           <View style={styles.divider} />
 
-          {/* Customer & Worker Row */}
+          {/* Customer & Worker Parties */}
           <View style={styles.partiesRow}>
             <View style={styles.partyBox}>
               <Text style={styles.partyTitle}>Billed To (Customer):</Text>
               <Text style={styles.partyName}>{invoice.customerName}</Text>
               <Text style={styles.partyDetail}>{invoice.customerPhone}</Text>
-              <Text style={styles.partyDetail} numberOfLines={2}>{invoice.customerAddress}</Text>
+              <Text style={styles.partyDetail} numberOfLines={2}>
+                {invoice.customerAddress}
+              </Text>
             </View>
             <View style={styles.partyBox}>
               <Text style={styles.partyTitle}>Service Provider:</Text>
               <Text style={styles.partyName}>{invoice.workerName}</Text>
-              <Text style={styles.partyDetail}>{booking.workerSkill}</Text>
+              <Text style={styles.partyDetail}>{booking.workerSkill || invoice.serviceTitle}</Text>
               <Text style={styles.partyDetail}>{booking.cooperativeName}</Text>
             </View>
           </View>
@@ -115,12 +282,13 @@ export const InvoiceScreen: React.FC<InvoiceScreenProps> = ({ bookingId, onBack 
             <Text style={[styles.td, { textAlign: 'right', flex: 1 }]}>₹{invoice.gstAmount}</Text>
           </View>
 
+          {/* Grand Total Row */}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Grand Total (INR)</Text>
             <Text style={styles.totalVal}>₹{invoice.totalAmount}</Text>
           </View>
 
-          {/* Cooperative Seal */}
+          {/* Cooperative Digital Seal */}
           <View style={styles.sealRow}>
             <View style={styles.sealBox}>
               <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
@@ -132,17 +300,19 @@ export const InvoiceScreen: React.FC<InvoiceScreenProps> = ({ bookingId, onBack 
         {/* Action Buttons */}
         <View style={styles.actionsRow}>
           <Button
-            title="Download PDF"
-            icon="download-outline"
+            title={isDownloading ? t('downloading_pdf') : t('download_pdf')}
+            icon={isDownloading ? undefined : 'download-outline'}
             onPress={handleDownload}
+            disabled={isDownloading || isSharing}
             variant="primary"
             size="md"
             style={{ flex: 1, marginRight: 8 }}
           />
           <Button
-            title="Share"
-            icon="share-social-outline"
+            title={isSharing ? t('sharing_invoice') : t('share_invoice')}
+            icon={isSharing ? undefined : 'share-social-outline'}
             onPress={handleShare}
+            disabled={isDownloading || isSharing}
             variant="outline"
             size="md"
             style={{ flex: 1 }}
@@ -162,10 +332,63 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  notFoundText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
+  unauthorizedBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  unauthorizedTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.danger,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+  unauthorizedDesc: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   scrollContent: {
     padding: spacing.md,
     paddingBottom: spacing.xxxl,
+  },
+  feedbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+  },
+  feedbackSuccess: {
+    backgroundColor: colors.successLight,
+    borderColor: colors.success,
+  },
+  feedbackInfo: {
+    backgroundColor: colors.infoLight || '#E0F2FE',
+    borderColor: colors.info || '#0284C7',
+  },
+  feedbackError: {
+    backgroundColor: colors.dangerLight,
+    borderColor: colors.danger,
+  },
+  feedbackText: {
+    fontSize: 12,
+    color: colors.text,
+    marginLeft: 8,
+    flex: 1,
+    fontWeight: '500',
   },
   paperCard: {
     backgroundColor: colors.surface,
@@ -213,6 +436,31 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     color: colors.success,
+  },
+  unpaidBadge: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#D97706',
+  },
+  unpaidText: {
+    color: '#B45309',
+  },
+  priorityBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: borderRadius.xs,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  priorityBannerText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#B45309',
+    marginLeft: 6,
+    letterSpacing: 0.3,
   },
   divider: {
     height: 1,

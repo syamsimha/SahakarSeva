@@ -18,7 +18,7 @@ interface LanguageModalProps {
 }
 
 export const LanguageModal: React.FC<LanguageModalProps> = ({ visible, onClose }) => {
-  const { language, setLanguage, supportedLanguages } = useLanguage();
+  const { language, setLanguage, supportedLanguages, t } = useLanguage();
 
   const handleSelect = (lang: Language) => {
     setLanguage(lang);
@@ -37,7 +37,7 @@ export const LanguageModal: React.FC<LanguageModalProps> = ({ visible, onClose }
           <TouchableWithoutFeedback>
             <View style={styles.content}>
               <View style={styles.header}>
-                <Text style={styles.title}>Select Language / भाषा चुनें</Text>
+                <Text style={styles.title}>{t('select_language_title')}</Text>
                 <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                   <Ionicons name="close" size={20} color={colors.textSecondary} />
                 </TouchableOpacity>

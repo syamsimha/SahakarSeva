@@ -40,7 +40,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const u = await authService.getCurrentUser();
         setUser(u);
-        setRole(u.role);
+        if (u) {
+          setRole(u.role);
+        }
       } catch (err) {
         console.error('Failed to initialize auth', err);
       } finally {

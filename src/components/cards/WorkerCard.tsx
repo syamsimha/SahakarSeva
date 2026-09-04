@@ -4,6 +4,7 @@ import { WorkerProfile } from '../../types';
 import { colors, borderRadius, spacing, typography } from '../../theme';
 import { Avatar, StarRating, Badge, Button } from '../ui';
 import { Ionicons } from '@expo/vector-icons';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface WorkerCardProps {
   worker: WorkerProfile;
@@ -16,6 +17,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
   onPress,
   onBookNow,
 }) => {
+  const { t } = useLanguage();
   return (
     <TouchableOpacity
       activeOpacity={0.85}
@@ -37,11 +39,11 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
             {worker.isAvailable ? (
               <View style={styles.availableBadge}>
                 <View style={styles.greenDot} />
-                <Text style={styles.availableText}>Available</Text>
+                <Text style={styles.availableText}>{t('available')}</Text>
               </View>
             ) : (
               <View style={styles.busyBadge}>
-                <Text style={styles.busyText}>Busy</Text>
+                <Text style={styles.busyText}>{t('busy')}</Text>
               </View>
             )}
           </View>
@@ -59,12 +61,12 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
         <StarRating rating={worker.rating} count={worker.reviewCount} size={13} />
         <View style={styles.metricItem}>
           <Ionicons name="briefcase-outline" size={12} color={colors.textSecondary} />
-          <Text style={styles.metricText}>{worker.experienceYears} yrs exp</Text>
+          <Text style={styles.metricText}>{t('exp_years', { years: worker.experienceYears })}</Text>
         </View>
         {worker.distanceKm !== undefined && (
           <View style={styles.metricItem}>
             <Ionicons name="navigate-outline" size={12} color={colors.textSecondary} />
-            <Text style={styles.metricText}>{worker.distanceKm} km</Text>
+            <Text style={styles.metricText}>{t('distance_km', { distance: worker.distanceKm })}</Text>
           </View>
         )}
       </View>
@@ -72,13 +74,13 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
       {/* Footer / Pricing & Actions */}
       <View style={styles.footerRow}>
         <View style={styles.pricing}>
-          <Text style={styles.rateLabel}>Fair Wage Rate</Text>
-          <Text style={styles.rateValue}>₹{worker.hourlyRate}<Text style={styles.rateUnit}>/hr</Text></Text>
+          <Text style={styles.rateLabel}>{t('fair_wage_rate')}</Text>
+          <Text style={styles.rateValue}>₹{worker.hourlyRate}<Text style={styles.rateUnit}>{t('rate_per_hr')}</Text></Text>
         </View>
 
         <View style={styles.actionButtons}>
           <Button
-            title="View Profile"
+            title={t('view_profile')}
             onPress={onPress}
             variant="outline"
             size="sm"
@@ -86,7 +88,7 @@ export const WorkerCard: React.FC<WorkerCardProps> = ({
           />
           {onBookNow && (
             <Button
-              title="Book"
+              title={t('book_now')}
               onPress={onBookNow}
               variant="primary"
               size="sm"

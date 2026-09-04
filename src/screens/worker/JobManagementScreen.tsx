@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import { Header } from '../../components/common';
 import { BookingCard } from '../../components/cards';
 import { Button, EmptyState } from '../../components/ui';
 import { useBookings } from '../../context/BookingContext';
+import { useAuth } from '../../context/AuthContext';
+import { locationService } from '../../services/locationService';
 import { Booking, BookingStatus } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -22,8 +24,81 @@ interface JobManagementScreenProps {
 type TabType = 'active' | 'accepted' | 'completed';
 
 export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack }) => {
-  const { bookings, updateStatus } = useBookings();
+  const { bookings, updateStatus, updateWorkerLocation } = useBookings();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('active');
+  const [gpsStatus, setGpsStatus] = useState<string>('Standby');
+
+  // Stream genuine worker GPS coordinates to active jobs (on_the_way / in_progress)
+  useEffect(() => {
+    const activeJobs = bookings.filter(
+      (b) => b.status === 'on_the_way' || b.status === 'in_progress'
+    );
+
+    if (activeJobs.length === 0) {
+      setGpsStatus('Standby');
+      return;
+    }
+
+    setGpsStatus('Broadcasting live GPS...');
+    let watchId: number | null = null;
+    let intervalId: any = null;
+
+    const reportCoords = (lat: number, lng: number) => {
+      activeJobs.forEach((job) => {
+        updateWorkerLocation(job.id, lat, lng, user?.id || job.workerId);
+      });
+      setGpsStatus(`Live GPS Streaming (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      // 1. Immediate initial location report
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          reportCoords(pos.coords.latitude, pos.coords.longitude);
+        },
+        (err) => {
+          console.warn('Worker geolocation warning:', err?.message);
+          setGpsStatus('GPS signal acquiring...');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+
+      // 2. Continuous real device GPS streaming
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          reportCoords(pos.coords.latitude, pos.coords.longitude);
+        },
+        (err) => {
+          console.warn('Worker watchPosition warning:', err?.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      const fetchLoc = async () => {
+        try {
+          const loc = await locationService.getCurrentLocation();
+          if (loc && loc.latitude && loc.longitude) {
+            reportCoords(loc.latitude, loc.longitude);
+          }
+        } catch (e) {
+          // ignore
+        }
+      };
+      fetchLoc();
+      intervalId = setInterval(fetchLoc, 8000);
+    }
+
+    // Cleanup: stop location streaming immediately when jobs end or screen unmounts
+    return () => {
+      if (watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [bookings, user?.id]);
 
   const filterJobs = (tab: TabType): Booking[] => {
     switch (tab) {
@@ -76,6 +151,13 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
           );
         })}
       </View>
+
+      {activeTab === 'active' && currentJobs.length > 0 && (
+        <View style={styles.gpsStatusBar}>
+          <Ionicons name="radio" size={15} color={colors.success} />
+          <Text style={styles.gpsStatusText}>Worker Device GPS: {gpsStatus}</Text>
+        </View>
+      )}
 
       <FlatList
         data={currentJobs}
@@ -163,6 +245,21 @@ const styles = StyleSheet.create({
   tabBtnTextActive: {
     color: colors.primary,
     fontWeight: '700',
+  },
+  gpsStatusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: '#A7F3D0',
+  },
+  gpsStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#065F46',
+    marginLeft: 6,
   },
   listContent: {
     padding: spacing.md,

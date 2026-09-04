@@ -16,6 +16,7 @@ import { workerService } from '../../services';
 import { WorkerProfile, ServiceCategoryKey, ServiceCategory } from '../../types';
 import { CategoryDetailsModal } from '../../components/customer';
 import { filterWorkersByCategory } from './customerWorkerFilter';
+import { useLanguage } from '../../context/LanguageContext';
 import { Ionicons } from '@expo/vector-icons';
 
 interface ServiceSearchScreenProps {
@@ -37,6 +38,7 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
   onNavigateToBookingFlow,
   onBack,
 }) => {
+  const { t, language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategoryId || 'all');
   const [minRating, setMinRating] = useState<number>(0);
@@ -94,7 +96,7 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
   return (
     <View style={styles.container}>
       <Header
-        title="Find Services & Workers"
+        title={t('search_title')}
         showBack={Boolean(onBack)}
         onBack={onBack}
         showLocation={Boolean(activeLocationName)}
@@ -107,7 +109,7 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Search electrician, plumber, carpenter..."
+          placeholder={t('search_placeholder')}
           onClear={() => setSearchQuery('')}
         />
       </View>
@@ -120,12 +122,19 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
             style={[styles.pill, selectedCategory === 'all' && styles.pillActive]}
           >
             <Text style={[styles.pillText, selectedCategory === 'all' && styles.pillTextActive]}>
-              All Services
+              {t('all_categories')}
             </Text>
           </TouchableOpacity>
 
           {serviceCategories.map((cat) => {
             const isActive = selectedCategory === cat.id;
+            const catLabel =
+              language === 'hi' && cat.hindiTitle
+                ? cat.hindiTitle
+                : language === 'te' && cat.teluguTitle
+                ? cat.teluguTitle
+                : cat.title;
+
             return (
               <TouchableOpacity
                 key={cat.id}
@@ -133,7 +142,7 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
                 style={[styles.pill, isActive && styles.pillActive]}
               >
                 <Text style={[styles.pillText, isActive && styles.pillTextActive]}>
-                  {cat.title}
+                  {catLabel}
                 </Text>
               </TouchableOpacity>
             );
@@ -151,7 +160,13 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
           <View style={styles.catInfoLeft}>
             <Ionicons name="shield-checkmark" size={15} color={colors.primary} />
             <Text style={styles.catInfoText}>
-              <Text style={{ fontWeight: '700' }}>{activeCat.title}:</Text> Starts at ₹{activeCat.basePrice}
+              <Text style={{ fontWeight: '700' }}>
+                {language === 'hi' && activeCat.hindiTitle
+                  ? activeCat.hindiTitle
+                  : language === 'te' && activeCat.teluguTitle
+                  ? activeCat.teluguTitle
+                  : activeCat.title}:
+              </Text> Starts at ₹{activeCat.basePrice}
             </Text>
           </View>
           <Text style={styles.catInfoLink}>View Tasks & Tariffs ›</Text>
@@ -170,7 +185,7 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
             color={availableOnly ? colors.primary : colors.textSecondary}
           />
           <Text style={[styles.filterChipText, availableOnly && styles.filterChipTextActive]}>
-            Available Now
+            {t('available_only')}
           </Text>
         </TouchableOpacity>
 
@@ -219,9 +234,13 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
         ListEmptyComponent={
           <EmptyState
             icon="search"
-            title="No Cooperative Workers Found"
-            message="Try clearing your search query or selecting a different service category."
-            actionTitle="Reset Filters"
+            title={searchQuery.trim() ? t('no_workers_found') : t('no_results_found')}
+            message={
+              searchQuery.trim()
+                ? t('workers_matching', { query: searchQuery })
+                : t('adjust_filters')
+            }
+            actionTitle={t('clear_search')}
             onAction={() => {
               setSearchQuery('');
               setSelectedCategory('all');
