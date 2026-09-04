@@ -16,6 +16,7 @@ interface HeaderProps {
   locationName?: string;
   onNotificationPress?: () => void;
   unreadNotificationsCount?: number;
+  onLocationPress?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
   locationName = 'Indiranagar, Bengaluru',
   onNotificationPress,
   unreadNotificationsCount = 2,
+  onLocationPress,
 }) => {
   const { role } = useAuth();
   const { language } = useLanguage();
@@ -65,7 +67,12 @@ export const Header: React.FC<HeaderProps> = ({
               <Ionicons name="arrow-back" size={22} color={colors.text} />
             </TouchableOpacity>
           ) : showLocation ? (
-            <View style={styles.locationContainer}>
+            <TouchableOpacity
+              activeOpacity={onLocationPress ? 0.7 : 1}
+              onPress={onLocationPress}
+              disabled={!onLocationPress}
+              style={styles.locationContainer}
+            >
               <View style={styles.locationHeaderRow}>
                 <Ionicons name="location" size={14} color={colors.primary} />
                 <Text style={styles.locationLabel}>Current Location</Text>
@@ -74,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Text style={styles.locationValue} numberOfLines={1}>
                 {locationName}
               </Text>
-            </View>
+            </TouchableOpacity>
           ) : (
             <View style={styles.brandRow}>
               <View style={styles.brandLogoBox}>

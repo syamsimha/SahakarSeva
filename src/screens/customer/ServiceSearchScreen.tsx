@@ -13,29 +13,50 @@ import { WorkerCard } from '../../components/cards';
 import { EmptyState } from '../../components/ui';
 import { serviceCategories } from '../../data';
 import { workerService } from '../../services';
-import { WorkerProfile, ServiceCategoryKey } from '../../types';
+import { WorkerProfile, ServiceCategoryKey, ServiceCategory } from '../../types';
+import { CategoryDetailsModal } from '../../components/customer';
+import { filterWorkersByCategory } from './customerWorkerFilter';
 import { Ionicons } from '@expo/vector-icons';
 
 interface ServiceSearchScreenProps {
   initialCategoryId?: string;
+  initialSearchQuery?: string;
+  activeLocationName?: string;
+  onLocationPress?: () => void;
   onNavigateToWorkerProfile: (workerId: string) => void;
-  onNavigateToBookingFlow: (workerId: string) => void;
+  onNavigateToBookingFlow: (workerId: string, categoryId?: string) => void;
   onBack?: () => void;
 }
 
 export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
   initialCategoryId,
+  initialSearchQuery,
+  activeLocationName,
+  onLocationPress,
   onNavigateToWorkerProfile,
   onNavigateToBookingFlow,
   onBack,
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategoryId || 'all');
   const [minRating, setMinRating] = useState<number>(0);
   const [availableOnly, setAvailableOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<'distance' | 'rating' | 'price'>('distance');
   const [workers, setWorkers] = useState<WorkerProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [categoryModalData, setCategoryModalData] = useState<ServiceCategory | null>(null);
+
+  useEffect(() => {
+    if (initialCategoryId) {
+      setSelectedCategory(initialCategoryId);
+    }
+  }, [initialCategoryId]);
+
+  useEffect(() => {
+    if (initialSearchQuery !== undefined) {
+      setSearchQuery(initialSearchQuery);
+    }
+  }, [initialSearchQuery]);
 
   useEffect(() => {
     fetchWorkers();
@@ -44,12 +65,14 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
   const fetchWorkers = async () => {
     setLoading(true);
     try {
-      const data = await workerService.getWorkers({
+      const allWorkers = await workerService.getWorkers({
         searchQuery,
-        category: selectedCategory === 'all' ? undefined : selectedCategory,
         minRating: minRating > 0 ? minRating : undefined,
         availableOnly: availableOnly || undefined,
       });
+
+      // Customer-scoped category matching (preserves untouched workerService.ts)
+      const data = filterWorkersByCategory(allWorkers, selectedCategory);
 
       // Sorting
       if (sortBy === 'rating') {
@@ -66,12 +89,17 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
     }
   };
 
+  const activeCat = serviceCategories.find((c) => c.id === selectedCategory);
+
   return (
     <View style={styles.container}>
       <Header
         title="Find Services & Workers"
         showBack={Boolean(onBack)}
         onBack={onBack}
+        showLocation={Boolean(activeLocationName)}
+        locationName={activeLocationName}
+        onLocationPress={onLocationPress}
       />
 
       {/* Search Input */}
@@ -112,6 +140,23 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
           })}
         </ScrollView>
       </View>
+
+      {/* Category Tariffs & Tasks Banner */}
+      {activeCat && (
+        <TouchableOpacity
+          style={styles.categoryInfoBar}
+          onPress={() => setCategoryModalData(activeCat)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.catInfoLeft}>
+            <Ionicons name="shield-checkmark" size={15} color={colors.primary} />
+            <Text style={styles.catInfoText}>
+              <Text style={{ fontWeight: '700' }}>{activeCat.title}:</Text> Starts at ₹{activeCat.basePrice}
+            </Text>
+          </View>
+          <Text style={styles.catInfoLink}>View Tasks & Tariffs ›</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Filters Bar: Rating, Available, Sort */}
       <View style={styles.filtersBar}>
@@ -168,7 +213,7 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
           <WorkerCard
             worker={item}
             onPress={() => onNavigateToWorkerProfile(item.id)}
-            onBookNow={() => onNavigateToBookingFlow(item.id)}
+            onBookNow={() => onNavigateToBookingFlow(item.id, selectedCategory !== 'all' ? selectedCategory : undefined)}
           />
         )}
         ListEmptyComponent={
@@ -185,6 +230,19 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
             }}
           />
         }
+      />
+
+      <CategoryDetailsModal
+        visible={Boolean(categoryModalData)}
+        category={categoryModalData}
+        onClose={() => setCategoryModalData(null)}
+        onFindWorkers={(catId) => setSelectedCategory(catId)}
+        onBookTask={(catId, subId) => {
+          setCategoryModalData(null);
+          // If we have workers in this category, book the first one or default
+          const w = workers.length > 0 ? workers[0].id : 'worker-101';
+          onNavigateToBookingFlow(w, catId);
+        }}
       />
     </View>
   );
@@ -277,5 +335,30 @@ const styles = StyleSheet.create({
   listContent: {
     padding: spacing.md,
     paddingBottom: spacing.xxxl,
+  },
+  categoryInfoBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(13, 122, 95, 0.2)',
+  },
+  catInfoLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  catInfoText: {
+    fontSize: 12,
+    color: colors.primaryDark,
+    marginLeft: 6,
+  },
+  catInfoLink: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
   },
 });

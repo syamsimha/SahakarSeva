@@ -15,11 +15,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useBookings } from '../../context/BookingContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { workerService } from '../../services';
-import { WorkerProfile } from '../../types';
+import { WorkerProfile, ServiceCategory } from '../../types';
+import { CategoryDetailsModal } from '../../components/customer';
 import { Ionicons } from '@expo/vector-icons';
 
 interface CustomerHomeScreenProps {
-  onNavigateToServices: (categoryId?: string) => void;
+  activeLocationName?: string;
+  onLocationPress?: () => void;
+  onNavigateToServices: (categoryId?: string, searchQuery?: string) => void;
   onNavigateToWorkerProfile: (workerId: string) => void;
   onNavigateToBookingFlow: (workerId?: string, serviceId?: string) => void;
   onNavigateToBookings: () => void;
@@ -28,6 +31,8 @@ interface CustomerHomeScreenProps {
 }
 
 export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
+  activeLocationName,
+  onLocationPress,
   onNavigateToServices,
   onNavigateToWorkerProfile,
   onNavigateToBookingFlow,
@@ -40,6 +45,7 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [workers, setWorkers] = useState<WorkerProfile[]>([]);
+  const [selectedCategoryForDetails, setSelectedCategoryForDetails] = useState<ServiceCategory | null>(null);
 
   React.useEffect(() => {
     workerService.getWorkers({ availableOnly: true }).then((data) => setWorkers(data.slice(0, 3)));
@@ -54,7 +60,8 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
     <View style={styles.container}>
       <Header
         showLocation
-        locationName="Indiranagar, Bengaluru"
+        locationName={activeLocationName || 'Indiranagar, Bengaluru'}
+        onLocationPress={onLocationPress}
         onNotificationPress={onNavigateToNotifications}
         unreadNotificationsCount={2}
       />
@@ -69,7 +76,8 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder={t('search_placeholder')}
-            onFilterPress={() => onNavigateToServices()}
+            onFilterPress={() => onNavigateToServices(undefined, searchQuery)}
+            onClear={() => setSearchQuery('')}
             style={{ marginTop: spacing.md }}
           />
         </View>
@@ -128,7 +136,7 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
               <ServiceCategoryCard
                 key={cat.id}
                 category={cat}
-                onPress={() => onNavigateToServices(cat.id)}
+                onPress={() => setSelectedCategoryForDetails(cat)}
               />
             ))}
           </View>
@@ -145,9 +153,15 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Workers Near Your Cooperative Zone</Text>
-            <Text style={styles.zoneText}>Indiranagar Cluster</Text>
+            <Text style={styles.zoneText}>
+              {activeLocationName ? activeLocationName.split(',')[0] + ' Cluster' : 'Indiranagar Cluster'}
+            </Text>
           </View>
-          <MapPlaceholder height={160} workerCount={8} />
+          <MapPlaceholder
+            height={160}
+            locationName={activeLocationName || 'Indiranagar, Bengaluru'}
+            workerCount={8}
+          />
         </View>
 
         {/* Nearby Verified Workers */}
@@ -180,6 +194,14 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
           </View>
         </View>
       </ScrollView>
+
+      <CategoryDetailsModal
+        visible={Boolean(selectedCategoryForDetails)}
+        category={selectedCategoryForDetails}
+        onClose={() => setSelectedCategoryForDetails(null)}
+        onFindWorkers={(catId) => onNavigateToServices(catId)}
+        onBookTask={(catId, subId) => onNavigateToBookingFlow(undefined, catId)}
+      />
     </View>
   );
 };

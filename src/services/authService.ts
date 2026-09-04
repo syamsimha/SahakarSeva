@@ -1,4 +1,4 @@
-import { AppUser, UserRole } from '../types';
+import { AppUser, UserRole, Customer } from '../types';
 import { mockCustomer, mockWorkerUser, mockAdminUser } from '../data';
 
 class AuthService {
@@ -41,6 +41,19 @@ class AuthService {
         this.currentUser = newUser;
         resolve(newUser);
       }, 400);
+    });
+  }
+
+  async updateCustomerProfile(data: Partial<Customer>): Promise<Customer> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const updated: Customer = {
+          ...(this.currentUser as Customer),
+          ...data,
+        };
+        this.currentUser = updated;
+        resolve(updated);
+      }, 200);
     });
   }
 

@@ -15,7 +15,8 @@ import { serviceCategories, subServices } from '../../data';
 import { workerService } from '../../services';
 import { useAuth } from '../../context/AuthContext';
 import { useBookings } from '../../context/BookingContext';
-import { WorkerProfile, ServiceCategoryKey, Booking } from '../../types';
+import { WorkerProfile, ServiceCategoryKey, Booking, Customer } from '../../types';
+import { filterWorkersByCategory } from './customerWorkerFilter';
 import { Ionicons } from '@expo/vector-icons';
 
 interface BookingFlowScreenProps {
@@ -32,6 +33,8 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   onCancel,
 }) => {
   const { user } = useAuth();
+  const customer = user?.role === 'customer' ? (user as Customer) : null;
+  const savedAddresses = customer?.savedAddresses || [];
   const { createBooking } = useBookings();
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -66,22 +69,56 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'netbanking' | 'cash'>('upi');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Sync category if worker was provided initially
   useEffect(() => {
-    workerService.getWorkers({ category: selectedCategory }).then((data) => {
+    if (initialWorkerId) {
+      workerService.getWorkerById(initialWorkerId).then((w) => {
+        if (w) {
+          const matchedCat = serviceCategories.find(
+            (c) =>
+              w.primarySkill.toLowerCase().includes(c.id) ||
+              (c.id === 'electrical' && w.primarySkill.toLowerCase().includes('electric')) ||
+              (c.id === 'cleaning' && w.primarySkill.toLowerCase().includes('clean')) ||
+              (c.id === 'technical' && w.primarySkill.toLowerCase().includes('tech')) ||
+              (c.id === 'driving' && w.primarySkill.toLowerCase().includes('driv')) ||
+              (c.id === 'gardening' && w.primarySkill.toLowerCase().includes('garden'))
+          );
+          if (matchedCat && !initialServiceId) {
+            setSelectedCategory(matchedCat.id as ServiceCategoryKey);
+          }
+        }
+      });
+    }
+  }, [initialWorkerId, initialServiceId]);
+
+  // Load workers for the selected category (using customer-scoped matching)
+  useEffect(() => {
+    workerService.getWorkers().then((all) => {
+      const data = filterWorkersByCategory(all, selectedCategory);
       setWorkersList(data);
-      if (!initialWorkerId && data.length > 0) {
-        setSelectedWorkerId(data[0].id);
+      if (data.length > 0) {
+        if (!selectedWorkerId || !data.some((w) => w.id === selectedWorkerId)) {
+          setSelectedWorkerId(data[0].id);
+        }
       }
     });
-  }, [selectedCategory, initialWorkerId]);
+  }, [selectedCategory]);
+
+  // Keep sub-service aligned with category
+  useEffect(() => {
+    const subs = subServices.filter((s) => s.categoryId === selectedCategory);
+    if (subs.length > 0 && !subs.some((s) => s.id === selectedSubServiceId)) {
+      setSelectedSubServiceId(subs[0].id);
+    }
+  }, [selectedCategory, selectedSubServiceId]);
 
   const selectedWorker = workersList.find((w) => w.id === selectedWorkerId) || workersList[0];
   const activeSubServices = subServices.filter((s) => s.categoryId === selectedCategory);
   const currentSubService =
     activeSubServices.find((s) => s.id === selectedSubServiceId) || activeSubServices[0];
 
-  // Pricing calculation
-  const baseRate = currentSubService?.standardPrice || 299;
+  // Pricing calculation with safe fallbacks
+  const baseRate = currentSubService?.standardPrice || selectedWorker?.baseRate || 299;
   const welfareCess = Math.round(baseRate * 0.05); // 5%
   const gst = Math.round(baseRate * 0.05); // 5%
   const totalAmount = baseRate + welfareCess + gst;
@@ -328,6 +365,47 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
           <View style={styles.stepBox}>
             <Text style={styles.stepTitle}>5. Confirm Service Location</Text>
             <Text style={styles.stepSubtitle}>Where should the cooperative technician report?</Text>
+
+            {savedAddresses.length > 0 && (
+              <View style={styles.savedAddressesBox}>
+                <Text style={styles.savedChipGroupTitle}>Quick Select from Saved Addresses:</Text>
+                <View style={styles.savedChipsRow}>
+                  {savedAddresses.map((addr) => {
+                    const isSelected = addressLine === addr.address;
+                    return (
+                      <TouchableOpacity
+                        key={addr.id}
+                        onPress={() => {
+                          setAddressLine(addr.address);
+                          setLandmark(addr.title);
+                        }}
+                        style={[
+                          styles.savedAddressChip,
+                          isSelected && styles.savedAddressChipActive,
+                        ]}
+                      >
+                        <Ionicons
+                          name={addr.title.toLowerCase().includes('home') ? 'home' : 'business'}
+                          size={13}
+                          color={isSelected ? colors.primary : colors.textSecondary}
+                        />
+                        <Text
+                          style={[
+                            styles.savedAddressChipText,
+                            isSelected && styles.savedAddressChipTextActive,
+                          ]}
+                        >
+                          {addr.title}
+                        </Text>
+                        {addr.isDefault && (
+                          <View style={styles.chipDefaultDot} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             <Text style={styles.inputLabel}>Street Address / Flat Number</Text>
             <TextInput
@@ -709,6 +787,56 @@ const styles = StyleSheet.create({
   },
   slotTextActive: {
     color: colors.primary,
+  },
+  savedAddressesBox: {
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  savedChipGroupTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  savedChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  savedAddressChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: borderRadius.round,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  savedAddressChipActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  savedAddressChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginLeft: 4,
+  },
+  savedAddressChipTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  chipDefaultDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+    marginLeft: 4,
   },
   inputLabel: {
     fontSize: 13,

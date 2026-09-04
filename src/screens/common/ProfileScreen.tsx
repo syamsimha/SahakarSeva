@@ -10,8 +10,10 @@ import {
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header, LanguageModal, RoleSwitcherModal } from '../../components/common';
 import { Avatar, Badge, Button } from '../../components/ui';
+import { EditProfileModal, AddressManageModal } from '../../components/customer';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { Customer } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
 interface ProfileScreenProps {
@@ -25,10 +27,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToWelfare,
   onNavigateToVerification,
 }) => {
-  const { user, role, logout } = useAuth();
+  const { user, role, logout, updateCustomerProfile } = useAuth();
   const { language } = useLanguage();
   const [langModalVisible, setLangModalVisible] = useState(false);
   const [roleModalVisible, setRoleModalVisible] = useState(false);
+  const [editProfileVisible, setEditProfileVisible] = useState(false);
+  const [addressModalVisible, setAddressModalVisible] = useState(false);
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -86,6 +90,26 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.primary} />
         </TouchableOpacity>
+
+        {/* Customer-Specific Shortcuts */}
+        {role === 'customer' && (
+          <View style={styles.menuGroup}>
+            <Text style={styles.menuGroupTitle}>Customer Account & Addresses</Text>
+            <TouchableOpacity onPress={() => setEditProfileVisible(true)} style={styles.menuItem}>
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
+              <Text style={styles.menuItemText}>Edit Profile Details</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setAddressModalVisible(true)} style={styles.menuItem}>
+              <Ionicons name="map-outline" size={20} color={colors.primary} />
+              <Text style={styles.menuItemText}>Manage Saved Addresses</Text>
+              <Text style={styles.menuItemValue}>
+                {(user as Customer)?.savedAddresses?.length || 0}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Role-Specific Shortcuts */}
         {role === 'worker' && (
@@ -163,6 +187,22 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         visible={roleModalVisible}
         onClose={() => setRoleModalVisible(false)}
       />
+      {role === 'customer' && (
+        <>
+          <EditProfileModal
+            visible={editProfileVisible}
+            customer={user as Customer}
+            onClose={() => setEditProfileVisible(false)}
+            onSave={updateCustomerProfile}
+          />
+          <AddressManageModal
+            visible={addressModalVisible}
+            customer={user as Customer}
+            onClose={() => setAddressModalVisible(false)}
+            onUpdateAddresses={(savedAddresses) => updateCustomerProfile({ savedAddresses })}
+          />
+        </>
+      )}
     </View>
   );
 };

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { AppUser, UserRole } from '../types';
+import { AppUser, UserRole, Customer } from '../types';
 import { authService } from '../services';
 
 interface AuthContextType {
@@ -12,6 +12,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
+  updateCustomerProfile: (data: Partial<Customer>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
   completeOnboarding: () => {},
   resetOnboarding: () => {},
+  updateCustomerProfile: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -81,6 +83,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsOnboarded(false);
   };
 
+  const updateCustomerProfile = async (data: Partial<Customer>) => {
+    setIsLoading(true);
+    try {
+      const updated = await authService.updateCustomerProfile(data);
+      setUser(updated);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -93,6 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         completeOnboarding,
         resetOnboarding,
+        updateCustomerProfile,
       }}
     >
       {children}

@@ -16,6 +16,8 @@ import {
 import { NotificationsScreen, ProfileScreen, HelpSupportScreen } from '../screens/common';
 import { Booking } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { defaultLocations, LocationCoords, locationService } from '../services/locationService';
+import { LocationSelectorModal } from '../components/customer';
 import { Ionicons } from '@expo/vector-icons';
 
 type CustomerTab = 'home' | 'services' | 'bookings' | 'notifications' | 'profile';
@@ -23,6 +25,14 @@ type CustomerTab = 'home' | 'services' | 'bookings' | 'notifications' | 'profile
 export const CustomerNavigator: React.FC = () => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<CustomerTab>('home');
+
+  // Customer Location State
+  const [currentLocation, setCurrentLocation] = useState<LocationCoords>(defaultLocations.indiranagar);
+  const [currentLocationLabel, setCurrentLocationLabel] = useState<string>('Indiranagar, Bengaluru');
+  const [showLocationModal, setShowLocationModal] = useState(false);
+
+  // Search State across tabs
+  const [searchQuery, setSearchQuery] = useState<string | undefined>();
 
   // Modal / Subscreen States
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
@@ -137,12 +147,18 @@ export const CustomerNavigator: React.FC = () => {
       case 'home':
         return (
           <CustomerHomeScreen
-            onNavigateToServices={(catId) => {
+            activeLocationName={currentLocationLabel}
+            onLocationPress={() => setShowLocationModal(true)}
+            onNavigateToServices={(catId, q) => {
               setServiceCategoryId(catId);
+              setSearchQuery(q);
               setActiveTab('services');
             }}
             onNavigateToWorkerProfile={(wId) => setSelectedWorkerId(wId)}
-            onNavigateToBookingFlow={(wId) => setBookingFlowWorkerId(wId || 'worker-101')}
+            onNavigateToBookingFlow={(wId, catId) => {
+              setBookingFlowWorkerId(wId || 'worker-101');
+              if (catId) setServiceCategoryId(catId);
+            }}
             onNavigateToBookings={() => setActiveTab('bookings')}
             onNavigateToEmergency={() => setShowEmergency(true)}
             onNavigateToNotifications={() => setActiveTab('notifications')}
@@ -152,8 +168,14 @@ export const CustomerNavigator: React.FC = () => {
         return (
           <ServiceSearchScreen
             initialCategoryId={serviceCategoryId}
+            initialSearchQuery={searchQuery}
+            activeLocationName={currentLocationLabel}
+            onLocationPress={() => setShowLocationModal(true)}
             onNavigateToWorkerProfile={(wId) => setSelectedWorkerId(wId)}
-            onNavigateToBookingFlow={(wId) => setBookingFlowWorkerId(wId)}
+            onNavigateToBookingFlow={(wId, catId) => {
+              setBookingFlowWorkerId(wId);
+              if (catId) setServiceCategoryId(catId);
+            }}
           />
         );
       case 'bookings':
@@ -214,6 +236,20 @@ export const CustomerNavigator: React.FC = () => {
           );
         })}
       </View>
+
+      <LocationSelectorModal
+        visible={showLocationModal}
+        currentAddress={currentLocationLabel}
+        onClose={() => setShowLocationModal(false)}
+        onSelectLocation={(loc, label) => {
+          setCurrentLocation(loc);
+          setCurrentLocationLabel(label);
+        }}
+        onManageAddresses={() => {
+          setShowLocationModal(false);
+          setActiveTab('profile');
+        }}
+      />
     </View>
   );
 };
