@@ -813,13 +813,14 @@ class AuthService {
     }
 
     return {
-      message: `A 6-digit verification code has been sent to ${trimmed}. Please check your Gmail inbox and spam folder.`,
+      message: `A verification code has been sent to ${trimmed}. Please check your Gmail inbox and spam folder.`,
     };
   }
 
   /**
    * Verify recovery OTP / token code from Supabase email.
    * Establishes temporary recovery session in Supabase Auth.
+   * Accepts 6-8 numeric digits matching Supabase Auth GoTrue output.
    */
   async verifyRecoveryOtp(email: string, token: string): Promise<void> {
     if (!isSupabaseConfigured()) {
@@ -837,11 +838,49 @@ class AuthService {
     if (!trimmedToken) {
       throw new Error('Please enter the verification code.');
     }
+    if (trimmedToken.length < 6 || trimmedToken.length > 8 || !/^[0-9]{6,8}$/.test(trimmedToken)) {
+      throw new Error('Please enter a valid verification code.');
+    }
 
     const { data, error } = await supabase.auth.verifyOtp({
       email: trimmedEmail,
       token: trimmedToken,
       type: 'recovery',
+    });
+
+    if (error || !data.session) {
+      throw new Error(mapFriendlyAuthError(error || 'The verification code entered is incorrect or has expired.'));
+    }
+  }
+
+  /**
+   * Verify signup / email confirmation OTP code from Supabase email.
+   * Compatible with 6-8 digit email confirmation OTPs.
+   */
+  async verifyEmailOtp(email: string, token: string): Promise<void> {
+    if (!isSupabaseConfigured()) {
+      throw new Error(
+        'Supabase authentication is not configured. Please set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your .env file.'
+      );
+    }
+
+    const trimmedEmail = normalizeEmail(email);
+    const trimmedToken = token.trim();
+
+    if (!trimmedEmail) {
+      throw new Error('Please enter your email address.');
+    }
+    if (!trimmedToken) {
+      throw new Error('Please enter the verification code.');
+    }
+    if (trimmedToken.length < 6 || trimmedToken.length > 8 || !/^[0-9]{6,8}$/.test(trimmedToken)) {
+      throw new Error('Please enter a valid verification code.');
+    }
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: trimmedEmail,
+      token: trimmedToken,
+      type: 'signup',
     });
 
     if (error || !data.session) {

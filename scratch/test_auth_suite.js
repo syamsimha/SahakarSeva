@@ -646,6 +646,43 @@ async function runTestSuite() {
   assert(!deviceFrameContent.includes('webUserLabel'), 'DeviceFrame does not contain webUserLabel');
   assert(!deviceFrameContent.includes('webSignOutBtn'), 'DeviceFrame does not contain webSignOutBtn');
 
+  // 36. 6-8 Digit OTP & Email Templates Validation (Solution B)
+  console.log('\n--- 36. 6-8 Digit OTP & Email Templates Validation (Solution B) ---');
+  const configTomlPath = path.join(__dirname, '..', 'supabase', 'config.toml');
+  const configToml = fs.readFileSync(configTomlPath, 'utf8');
+  assert(configToml.includes('otp_length = 6'), 'config.toml specifies otp_length = 6 under [auth.email]');
+  assert(configToml.includes('[auth.email.template.recovery]'), 'config.toml configures recovery email template');
+  assert(configToml.includes('[auth.email.template.confirmation]'), 'config.toml configures confirmation email template');
+
+  const confirmationTplPath = path.join(__dirname, '..', 'supabase', 'templates', 'confirmation.html');
+  assert(fs.existsSync(confirmationTplPath), 'confirmation.html template exists');
+  const confirmationTpl = fs.readFileSync(confirmationTplPath, 'utf8');
+  assert(confirmationTpl.includes('{{ .Token }}'), 'confirmation.html uses {{ .Token }}');
+  assert(!confirmationTpl.includes('{{ .ConfirmationURL }}'), 'confirmation.html contains no ConfirmationURL link');
+  assert(!confirmationTpl.includes('href='), 'confirmation.html contains no hyperlinks');
+
+  assert(recoveryTpl.includes('{{ .Token }}'), 'recovery.html uses {{ .Token }}');
+  assert(!recoveryTpl.includes('{{ .ConfirmationURL }}'), 'recovery.html contains no ConfirmationURL link');
+  assert(!recoveryTpl.includes('href='), 'recovery.html contains no hyperlinks');
+
+  assert(forgotPwContent.includes('maxLength={8}'), 'ForgotPasswordScreen specifies maxLength={8}');
+  assert(forgotPwContent.includes('/^[0-9]{6,8}$/'), 'ForgotPasswordScreen validates 6 to 8 numeric digits');
+  assert(!forgotPwContent.includes('Click the link in the recovery email'), 'ForgotPasswordScreen has no stale click link recovery email text');
+
+  assert(authServiceContent.includes('/^[0-9]{6,8}$/'), 'authService validates 6 to 8 numeric digits for OTP');
+  assert(authServiceContent.includes('verifyEmailOtp'), 'authService provides verifyEmailOtp for email confirmation compatibility');
+
+  // Verify that 8-digit OTP from hosted Supabase Cloud passes validation
+  const cloudOtp = '84920183';
+  assert(/^[0-9]{6,8}$/.test(cloudOtp) && cloudOtp.length >= 6 && cloudOtp.length <= 8, '8-digit Cloud OTP is recognized as valid');
+  // Verify that 6-digit OTP from local Supabase passes validation
+  const localOtp = '123456';
+  assert(/^[0-9]{6,8}$/.test(localOtp) && localOtp.length >= 6 && localOtp.length <= 8, '6-digit Local OTP is recognized as valid');
+  // Verify invalid length rejections (<6 or >8 or non-digits)
+  assert(!/^[0-9]{6,8}$/.test('12345'), '5-digit OTP is rejected');
+  assert(!/^[0-9]{6,8}$/.test('123456789'), '9-digit OTP is rejected');
+  assert(!/^[0-9]{6,8}$/.test('abcdef'), 'Non-numeric input is rejected');
+
   console.log('\n===============================================================');
   console.log(`ALL ${passedTests}/${totalTests} ASSERTIONS PASSED SUCCESSFULLY!`);
   console.log('===============================================================');

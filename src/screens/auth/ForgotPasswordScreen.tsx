@@ -231,8 +231,8 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
     }
 
     const cleanOtp = otp.trim();
-    if (!cleanOtp || cleanOtp.length !== 6 || !/^[0-9]{6}$/.test(cleanOtp)) {
-      setErrorMsg('Please enter a valid 6-digit verification code.');
+    if (!cleanOtp || cleanOtp.length < 6 || cleanOtp.length > 8 || !/^[0-9]{6,8}$/.test(cleanOtp)) {
+      setErrorMsg('Please enter a valid verification code.');
       return;
     }
 
@@ -408,8 +408,8 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
                 isLoading
                   ? t('sending_otp')
                   : (otpAttempts >= MAX_OTP_ATTEMPTS && requestCooldown > 0)
-                  ? `${t('send_otp')} (${requestCooldown}s)`
-                  : t('send_otp')
+                    ? `${t('send_otp')} (${requestCooldown}s)`
+                    : t('send_otp')
               }
               onPress={handleSendOtp}
               loading={isLoading}
@@ -447,7 +447,7 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
             <Text style={styles.stepTitle}>{t('enter_verification_code')}</Text>
             <Text style={styles.stepSubtitle}>
               {t('enter_otp_subtitle')} <Text style={{ fontWeight: '700', color: colors.text }}>{identifier}</Text>.
-              {'\n'}Click the link in the recovery email or enter the verification code below.
+              {'\n'}Enter the verification code sent to your email.
             </Text>
 
             <Text style={styles.inputLabel}>{t('enter_verification_code')}</Text>
@@ -463,13 +463,14 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
                   styles.otpInput,
                   Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null,
                 ]}
-                placeholder="• • • • • •"
+                placeholder="• • • • • • • •"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
-                maxLength={6}
+                maxLength={8}
                 value={otp}
-                onChangeText={(t) => {
-                  setOtp(t);
+                onChangeText={(text) => {
+                  const cleaned = text.replace(/[^0-9]/g, '').slice(0, 8);
+                  setOtp(cleaned);
                   setErrorMsg(null);
                 }}
                 onFocus={() => setFocusedField('otp')}
