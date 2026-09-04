@@ -85,6 +85,74 @@ class BookingService {
     });
   }
 
+  async cancelBooking(
+    bookingId: string,
+    reason: string
+  ): Promise<Booking | null> {
+    const booking = await this.updateBookingStatus(
+      bookingId,
+      'cancelled',
+      `Booking cancelled by customer: ${reason}`
+    );
+
+    if (booking) {
+      booking.cancellationReason = reason;
+    }
+
+    return booking;
+  }
+
+  async rejectJobWithReason(
+    bookingId: string,
+    reason: string
+  ): Promise<Booking | null> {
+    const booking = await this.updateBookingStatus(
+      bookingId,
+      'cancelled',
+      `Job declined by cooperative worker: ${reason}`
+    );
+
+    if (booking) {
+      booking.rejectionReason = reason;
+    }
+
+    return booking;
+  }
+
+  generateCompletionOtp(bookingId: string): string | null {
+    const booking = this.bookings.find((b) => b.id === bookingId);
+
+    if (!booking) {
+      return null;
+    }
+
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+
+    booking.completionOtp = otp;
+    booking.completionOtpVerified = false;
+
+    return otp;
+  }
+
+  verifyCompletionOtp(
+    bookingId: string,
+    otp: string
+  ): boolean {
+    const booking = this.bookings.find((b) => b.id === bookingId);
+
+    if (!booking || !booking.completionOtp) {
+      return false;
+    }
+
+    if (booking.completionOtp !== otp) {
+      return false;
+    }
+
+    booking.completionOtpVerified = true;
+
+    return true;
+  }
+
   async addReview(reviewData: Omit<Review, 'id' | 'createdAt'>): Promise<Review> {
     return new Promise((resolve) => {
       setTimeout(() => {

@@ -35,7 +35,7 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
   onNavigateToRate,
   onBack,
 }) => {
-  const { bookings, updateStatus } = useBookings();
+  const { bookings, updateStatus, cancelBooking } = useBookings();
   const booking = bookings.find((b) => b.id === bookingId);
 
   if (!booking) {
@@ -60,6 +60,25 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
     if (currentStepIdx < statusSteps.length - 1) {
       const nextStatus = statusSteps[currentStepIdx + 1].key;
       updateStatus(booking.id, nextStatus, `Simulated status update: ${nextStatus}`);
+    }
+  };
+
+  const handleCancelBooking = async () => {
+    const updated = await cancelBooking(
+      booking.id,
+      'Booking cancelled by customer'
+    );
+
+    if (updated) {
+      Alert.alert(
+        'Booking Cancelled',
+        'Your booking has been cancelled successfully.'
+      );
+    } else {
+      Alert.alert(
+        'Cancellation Failed',
+        'Unable to cancel this booking. Please try again.'
+      );
     }
   };
 
@@ -189,13 +208,26 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
 
           <View style={styles.actionBtnsRow}>
             <Button
-              title="View Invoice"
-              icon="receipt-outline"
-              onPress={() => onNavigateToInvoice(booking.id)}
+              title="Cancel Booking"
+              icon="close-circle-outline"
+              onPress={handleCancelBooking}
               variant="outline"
               size="sm"
-              style={{ flex: 1, marginRight: 8 }}
+              style={{ flex: 1, marginLeft: 8 }}
             />
+
+            {(booking.status === 'requested' ||
+              booking.status === 'accepted') && (
+                <Button
+                  title="Cancel Booking"
+                  icon="close-circle-outline"
+                  onPress={handleCancelBooking}
+                  variant="outline"
+                  size="sm"
+                  style={{ flex: 1, marginLeft: 8 }}
+                />
+              )}
+
             {booking.status === 'completed' && (
               <Button
                 title="Rate Worker"
@@ -203,7 +235,7 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
                 onPress={() => onNavigateToRate(booking.id)}
                 variant="secondary"
                 size="sm"
-                style={{ flex: 1 }}
+                style={{ flex: 1, marginLeft: 8 }}
               />
             )}
           </View>
