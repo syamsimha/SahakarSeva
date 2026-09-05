@@ -11,7 +11,11 @@ interface JobRequestsScreenProps {
 }
 
 export const JobRequestsScreen: React.FC<JobRequestsScreenProps> = ({ onBack }) => {
-  const { bookings, acceptJob, rejectJob } = useBookings();
+  const {
+    bookings,
+    acceptJob,
+    rejectJobWithReason,
+  } = useBookings();
   const pendingRequests = bookings.filter((b) => b.status === 'requested');
 
   const handleAccept = async (id: string) => {
@@ -19,9 +23,48 @@ export const JobRequestsScreen: React.FC<JobRequestsScreenProps> = ({ onBack }) 
     Alert.alert('Job Accepted', 'Booking moved to your Active Jobs queue. Please navigate to customer site on schedule.');
   };
 
-  const handleReject = async (id: string) => {
-    await rejectJob(id);
-    Alert.alert('Job Declined', 'Request returned to cooperative dispatch pool.');
+  const handleReject = (id: string) => {
+    Alert.alert(
+      'Decline Job',
+      'Why are you declining this request?',
+      [
+        {
+          text: 'Schedule Full',
+          onPress: () =>
+            processReject(id, 'Schedule full'),
+        },
+        {
+          text: 'Out of Service Area',
+          onPress: () =>
+            processReject(id, 'Out of service area'),
+        },
+        {
+          text: 'Tool Unavailable',
+          onPress: () =>
+            processReject(
+              id,
+              'Specialized tool unavailable'
+            ),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const processReject = async (
+    id: string,
+    reason: string
+  ) => {
+    await rejectJobWithReason(id, reason);
+
+    Alert.alert(
+      'Job Declined',
+      `Request declined.\nReason: ${reason}`
+    );
   };
 
   return (
