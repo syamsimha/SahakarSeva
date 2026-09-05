@@ -8,21 +8,41 @@ import {
   AdminBookingsScreen,
   AIDemandForecastScreen,
 } from '../screens/admin';
-import { NotificationsScreen, ProfileScreen, HelpSupportScreen } from '../screens/common';
+import { NotificationsScreen, ProfileScreen, HelpSupportScreen, AccessDeniedScreen } from '../screens/common';
+import { BookingDetailsScreen } from '../screens/customer/BookingDetailsScreen';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 
 type AdminTab = 'dashboard' | 'workers' | 'bookings' | 'analytics' | 'profile';
 
 export const AdminNavigator: React.FC = () => {
+  const { user } = useAuth();
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+
+  // Role-Based Access Control: strictly guard against unauthorized access
+  if (user?.role !== 'admin') {
+    return <AccessDeniedScreen requiredRole="admin" />;
+  }
 
   // Subscreens
   const [showVerification, setShowVerification] = useState(false);
   const [showForecast, setShowForecast] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [trackingBookingId, setTrackingBookingId] = useState<string | null>(null);
+
+  if (trackingBookingId) {
+    return (
+      <BookingDetailsScreen
+        bookingId={trackingBookingId}
+        onNavigateToInvoice={() => {}}
+        onNavigateToRate={() => {}}
+        onBack={() => setTrackingBookingId(null)}
+      />
+    );
+  }
 
   if (showVerification) {
     return <WorkerVerificationAdminScreen onBack={() => setShowVerification(false)} />;
@@ -50,12 +70,13 @@ export const AdminNavigator: React.FC = () => {
             onNavigateToBookings={() => setActiveTab('bookings')}
             onNavigateToForecast={() => setShowForecast(true)}
             onNavigateToNotifications={() => setShowNotifications(true)}
+            onNavigateToTracking={(id) => setTrackingBookingId(id)}
           />
         );
       case 'workers':
         return <WorkerManagementScreen />;
       case 'bookings':
-        return <AdminBookingsScreen />;
+        return <AdminBookingsScreen onTrackWorker={(id) => setTrackingBookingId(id)} />;
       case 'analytics':
         return <AIDemandForecastScreen />;
       case 'profile':
@@ -68,9 +89,9 @@ export const AdminNavigator: React.FC = () => {
   };
 
   const tabs: Array<{ id: AdminTab; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
-    { id: 'dashboard', label: 'Dashboard', icon: 'grid' },
+    { id: 'dashboard', label: t('dashboard'), icon: 'grid' },
     { id: 'workers', label: t('nav_workers'), icon: 'people-outline' },
-    { id: 'bookings', label: t('nav_bookings'), icon: 'receipt-outline' },
+    { id: 'bookings', label: 'Bookings', icon: 'receipt-outline' },
     { id: 'analytics', label: t('nav_analytics'), icon: 'analytics-outline' },
     { id: 'profile', label: t('nav_profile'), icon: 'person-outline' },
   ];

@@ -4,6 +4,7 @@ import { Booking } from '../../types';
 import { colors, borderRadius, spacing, typography } from '../../theme';
 import { Badge, Button } from '../ui';
 import { Ionicons } from '@expo/vector-icons';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface BookingCardProps {
   booking: Booking;
@@ -20,6 +21,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
   onRate,
   onTrack,
 }) => {
+  const { t } = useLanguage();
   const isEmergency = booking.isEmergency;
   const isCompleted = booking.status === 'completed';
   const isActive =
@@ -73,36 +75,25 @@ export const BookingCard: React.FC<BookingCardProps> = ({
       {/* Footer / Price & Dynamic Actions */}
       <View style={styles.footerRow}>
         <View style={styles.priceCol}>
-          <Text style={styles.priceLabel}>Estimated Fair Wage</Text>
+          <Text style={styles.priceLabel}>{t('estimated_fair_fare')}</Text>
           <Text style={styles.priceAmount}>₹{booking.estimatedAmount}</Text>
         </View>
 
         <View style={styles.actionsRow}>
-          {isActive && onTrack && (
-            <Button
-              title="Track Worker"
-              icon="navigate"
-              onPress={onTrack}
-              variant="primary"
-              size="sm"
-              style={{ marginRight: 6 }}
-            />
-          )}
-
           {isCompleted && !booking.hasRated && onRate && (
             <Button
-              title="Rate Service"
+              title={t('rate_worker')}
               icon="star"
               onPress={onRate}
-              variant="secondary"
+              variant="primary"
               size="sm"
-              style={{ marginRight: 6 }}
+              style={{ marginRight: 6, backgroundColor: '#D97706' }}
             />
           )}
 
           {isCompleted && onViewInvoice && (
             <Button
-              title="Invoice"
+              title={t('view_invoice')}
               icon="receipt-outline"
               onPress={onViewInvoice}
               variant="outline"
@@ -111,12 +102,15 @@ export const BookingCard: React.FC<BookingCardProps> = ({
             />
           )}
 
-          <Button
-            title="Details"
-            onPress={onPress}
-            variant="outline"
-            size="sm"
-          />
+          {!isCompleted && (
+            <Button
+              title={t('track_worker')}
+              icon="navigate"
+              onPress={onTrack || onPress}
+              variant="primary"
+              size="sm"
+            />
+          )}
         </View>
       </View>
     </TouchableOpacity>

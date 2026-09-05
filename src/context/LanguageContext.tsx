@@ -4,7 +4,7 @@ import { Language, TranslationKey, translate, supportedLanguages, LanguageOption
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: TranslationKey) => string;
+  t: (key: TranslationKey | string) => string;
   supportedLanguages: LanguageOption[];
 }
 
@@ -22,7 +22,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLanguageState(lang);
   };
 
-  const t = (key: TranslationKey) => {
+  const t = (key: TranslationKey | string) => {
     return translate(key, language);
   };
 

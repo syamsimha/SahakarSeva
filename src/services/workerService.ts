@@ -91,6 +91,75 @@ class WorkerService {
       }, 150);
     });
   }
+
+  async addWorker(data: {
+    name: string;
+    phone: string;
+    primarySkill: string;
+    allSkills?: string[];
+    cooperativeName?: string;
+    experienceYears?: number;
+    hourlyRate?: number;
+    verificationStatus?: WorkerVerificationStatus;
+    about?: string;
+  }): Promise<WorkerProfile> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const randId = Math.floor(100 + Math.random() * 900);
+        const newWorker: WorkerProfile = {
+          id: `worker-${Date.now()}`,
+          name: data.name,
+          email: `${data.name.toLowerCase().replace(/\s+/g, '.')}.${randId}@sahakarseva.org`,
+          phone: data.phone,
+          address: 'Indiranagar Cooperative Colony',
+          city: 'Bengaluru',
+          pincode: '560038',
+          role: 'worker',
+          primarySkill: data.primarySkill,
+          allSkills: data.allSkills && data.allSkills.length > 0 ? data.allSkills : [data.primarySkill],
+          cooperativeName: data.cooperativeName || 'Nagarika Seva Sahakari Samiti Ltd.',
+          cooperativeId: 'coop-101',
+          experienceYears: data.experienceYears || 3,
+          certifications: ['Govt ITI Certificate', 'Cooperative Guild Registered'],
+          rating: 5.0,
+          reviewCount: 0,
+          completedJobsCount: 0,
+          hourlyRate: data.hourlyRate || 350,
+          baseRate: data.hourlyRate ? Math.round(data.hourlyRate * 0.85) : 299,
+          isAvailable: true,
+          serviceArea: 'Indiranagar & East Bengaluru',
+          serviceRadiusKm: 8,
+          languages: ['Kannada', 'Hindi', 'English'],
+          about: data.about || `Certified cooperative ${data.primarySkill} professional verified under state labour standards.`,
+          verificationStatus: data.verificationStatus || 'verified',
+          documents: [
+            {
+              id: `doc-${Date.now()}-1`,
+              name: 'Aadhaar Card',
+              type: 'aadhaar',
+              status: 'verified',
+              uploadedAt: new Date().toISOString().split('T')[0],
+            },
+          ],
+          welfareMemberId: `KA-LBR-2024-${randId}`,
+          bankAccountLinked: true,
+          createdAt: new Date().toISOString().split('T')[0],
+        };
+        this.workers.unshift(newWorker);
+        resolve(newWorker);
+      }, 300);
+    });
+  }
+
+  async removeWorker(workerId: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const initialLen = this.workers.length;
+        this.workers = this.workers.filter((w) => w.id !== workerId);
+        resolve(this.workers.length < initialLen);
+      }, 250);
+    });
+  }
 }
 
 export const workerService = new WorkerService();

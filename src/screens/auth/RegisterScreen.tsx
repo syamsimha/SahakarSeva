@@ -122,22 +122,35 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
                 <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
               </TouchableOpacity>
 
-              {/* Admin Option */}
+              {/* Admin Option - Locked (Single Master Admin Protocol) */}
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={() => handleRoleSelect('admin')}
-                style={styles.roleCard}
+                onPress={() => {
+                  Alert.alert(
+                    'Single Administrator Protocol Enforced',
+                    'Sahakar Sathi operates under a single Master Administrator model. Only the designated central administrator (+91 94480 88990) is authorized to manage and control all district jobs and operations.\n\nRegistration of additional administrative accounts is strictly prohibited.'
+                  );
+                }}
+                style={[
+                  styles.roleCard,
+                  { opacity: 0.75, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+                ]}
               >
-                <View style={[styles.roleIconBox, { backgroundColor: colors.adminBadge + '18' }]}>
-                  <Ionicons name="shield-checkmark" size={26} color={colors.adminBadge} />
+                <View style={[styles.roleIconBox, { backgroundColor: '#E2E8F0' }]}>
+                  <Ionicons name="lock-closed" size={24} color="#64748B" />
                 </View>
                 <View style={styles.roleInfo}>
-                  <Text style={styles.roleTitle}>Cooperative Administrator</Text>
-                  <Text style={styles.roleSubtitle}>
-                    I manage a Labour Cooperative Federation, Society verification & analytics
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.roleTitle, { color: '#64748B' }]}>Cooperative Administrator</Text>
+                    <View style={{ backgroundColor: '#FEE2E2', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#DC2626' }}>SINGLE ADMIN ONLY</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.roleSubtitle, { color: '#94A3B8' }]}>
+                    Centralized district control is exclusive to the designated Master Admin. New admin registrations are closed.
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
               </TouchableOpacity>
             </View>
 

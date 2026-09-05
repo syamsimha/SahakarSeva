@@ -55,16 +55,20 @@ export const RootNavigator: React.FC = () => {
     );
   }
 
-  // Render role-specific navigation inside device frame
+  // Render role-specific navigation inside device frame with strict RBAC:
+  // If a member is signed in as customer, they are strictly restricted to CustomerNavigator.
   const renderRoleNavigator = () => {
-    switch (role) {
-      case 'worker':
-        return <WorkerNavigator />;
-      case 'admin':
-        return <AdminNavigator />;
-      default:
-        return <CustomerNavigator />;
+    const userRole = user.role || 'customer';
+    if (userRole === 'customer') {
+      return <CustomerNavigator />;
     }
+    if (userRole === 'worker') {
+      return <WorkerNavigator />;
+    }
+    if (userRole === 'admin') {
+      return <AdminNavigator />;
+    }
+    return <CustomerNavigator />;
   };
 
   return <DeviceFrame>{renderRoleNavigator()}</DeviceFrame>;

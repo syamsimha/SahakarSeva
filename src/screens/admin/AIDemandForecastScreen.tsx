@@ -14,13 +14,6 @@ interface AIDemandForecastScreenProps {
 export const AIDemandForecastScreen: React.FC<AIDemandForecastScreenProps> = ({ onBack }) => {
   const [forecast, setForecast] = useState<AIDemandForecast>(mockAIDemandForecasts[0]);
 
-  const handleApplyReallocation = (actionText: string) => {
-    Alert.alert(
-      'Workforce Dispatch Reallocated',
-      `Cooperative notification dispatched to standby worker pool:\n\n"${actionText}"`
-    );
-  };
-
   return (
     <View style={styles.container}>
       <Header
@@ -129,18 +122,6 @@ export const AIDemandForecastScreen: React.FC<AIDemandForecastScreenProps> = ({ 
                     Suggested Action: {item.recommendedAction}
                   </Text>
                 </View>
-
-                {hasShortfall && (
-                  <Button
-                    title="Execute Suggested Allocation"
-                    icon="send"
-                    onPress={() => handleApplyReallocation(item.recommendedAction)}
-                    variant="primary"
-                    size="sm"
-                    fullWidth
-                    style={{ marginTop: spacing.sm }}
-                  />
-                )}
               </View>
             );
           })}

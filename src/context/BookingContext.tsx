@@ -7,6 +7,17 @@ interface BookingContextType {
   isLoading: boolean;
   createBooking: (data: Omit<Booking, 'id' | 'bookingCode' | 'createdAt' | 'statusHistory'>) => Promise<Booking>;
   updateStatus: (bookingId: string, status: BookingStatus, note?: string) => Promise<Booking | null>;
+  assignWorker: (
+    bookingId: string,
+    worker: {
+      id: string;
+      name: string;
+      primarySkill: string;
+      phone: string;
+      cooperativeName: string;
+    },
+    note?: string
+  ) => Promise<Booking | null>;
   acceptJob: (bookingId: string) => Promise<Booking | null>;
   rejectJob: (bookingId: string) => Promise<Booking | null>;
   rateBooking: (bookingId: string, workerId: string, customerId: string, customerName: string, rating: number, comment: string) => Promise<void>;
@@ -18,6 +29,7 @@ const BookingContext = createContext<BookingContextType>({
   isLoading: false,
   createBooking: async () => ({} as Booking),
   updateStatus: async () => null,
+  assignWorker: async () => null,
   acceptJob: async () => null,
   rejectJob: async () => null,
   rateBooking: async () => {},
@@ -50,6 +62,26 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateStatus = async (bookingId: string, status: BookingStatus, note?: string) => {
     const updated = await bookingService.updateBookingStatus(bookingId, status, note);
+    if (updated) {
+      setBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? updated : b))
+      );
+    }
+    return updated;
+  };
+
+  const assignWorker = async (
+    bookingId: string,
+    worker: {
+      id: string;
+      name: string;
+      primarySkill: string;
+      phone: string;
+      cooperativeName: string;
+    },
+    note?: string
+  ) => {
+    const updated = await bookingService.assignWorkerToBooking(bookingId, worker, note);
     if (updated) {
       setBookings((prev) =>
         prev.map((b) => (b.id === bookingId ? updated : b))
@@ -95,6 +127,7 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         isLoading,
         createBooking,
         updateStatus,
+        assignWorker,
         acceptJob,
         rejectJob,
         rateBooking,

@@ -9,15 +9,22 @@ import {
   WorkerWelfareScreen,
   WorkerVerificationScreen,
 } from '../screens/worker';
-import { NotificationsScreen, ProfileScreen, HelpSupportScreen } from '../screens/common';
+import { NotificationsScreen, ProfileScreen, HelpSupportScreen, AccessDeniedScreen } from '../screens/common';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 
 type WorkerTab = 'home' | 'jobs' | 'requests' | 'earnings' | 'profile';
 
 export const WorkerNavigator: React.FC = () => {
+  const { user } = useAuth();
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<WorkerTab>('home');
+
+  // Role-Based Access Control: strictly guard against unauthorized access
+  if (user?.role !== 'worker') {
+    return <AccessDeniedScreen requiredRole="worker" />;
+  }
 
   // Subscreen States
   const [showWelfare, setShowWelfare] = useState(false);
@@ -74,7 +81,7 @@ export const WorkerNavigator: React.FC = () => {
   const tabs: Array<{ id: WorkerTab; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
     { id: 'home', label: t('nav_home'), icon: 'home' },
     { id: 'jobs', label: t('nav_jobs'), icon: 'construct-outline' },
-    { id: 'requests', label: 'Requests', icon: 'git-pull-request-outline' },
+    { id: 'requests', label: t('pending_requests'), icon: 'git-pull-request-outline' },
     { id: 'earnings', label: t('nav_earnings'), icon: 'wallet-outline' },
     { id: 'profile', label: t('nav_profile'), icon: 'person-outline' },
   ];

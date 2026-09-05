@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { colors, borderRadius, spacing } from '../theme';
 import {
@@ -14,14 +14,17 @@ import {
   ReviewScreen,
 } from '../screens/customer';
 import { NotificationsScreen, ProfileScreen, HelpSupportScreen } from '../screens/common';
+import { WorkCompletionRatingModal } from '../components/common';
 import { Booking } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { useBookings } from '../context/BookingContext';
 import { Ionicons } from '@expo/vector-icons';
 
 type CustomerTab = 'home' | 'services' | 'bookings' | 'notifications' | 'profile';
 
 export const CustomerNavigator: React.FC = () => {
   const { t } = useLanguage();
+  const { bookings } = useBookings();
   const [activeTab, setActiveTab] = useState<CustomerTab>('home');
 
   // Modal / Subscreen States
@@ -34,6 +37,30 @@ export const CustomerNavigator: React.FC = () => {
   const [showEmergency, setShowEmergency] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [serviceCategoryId, setServiceCategoryId] = useState<string | undefined>();
+  // Track work completed in this active session (only prompt after work has been completed, never on initial app load)
+  const [justCompletedBooking, setJustCompletedBooking] = useState<Booking | null>(null);
+  const prevStatusesRef = useRef<Record<string, string>>({});
+  const isInitialMountRef = useRef(true);
+
+  useEffect(() => {
+    // Record baseline statuses on initial mount so we DON'T ask first when opening the app
+    if (isInitialMountRef.current) {
+      bookings.forEach((b) => {
+        prevStatusesRef.current[b.id] = b.status;
+      });
+      isInitialMountRef.current = false;
+      return;
+    }
+
+    // After mount: prompt rating ONLY when a booking status transitions to 'completed'
+    bookings.forEach((b) => {
+      const prevStatus = prevStatusesRef.current[b.id];
+      if (prevStatus && prevStatus !== 'completed' && b.status === 'completed' && !b.hasRated) {
+        setJustCompletedBooking(b);
+      }
+      prevStatusesRef.current[b.id] = b.status;
+    });
+  }, [bookings]);
 
   // Overlays / Subscreens
   if (confirmedBooking) {
@@ -146,6 +173,7 @@ export const CustomerNavigator: React.FC = () => {
             onNavigateToBookings={() => setActiveTab('bookings')}
             onNavigateToEmergency={() => setShowEmergency(true)}
             onNavigateToNotifications={() => setActiveTab('notifications')}
+            onNavigateToRate={(bId) => setRateBookingId(bId)}
           />
         );
       case 'services':
@@ -214,6 +242,14 @@ export const CustomerNavigator: React.FC = () => {
           );
         })}
       </View>
+
+      {/* Work Completion Rating & Review Prompt Modal (Only shown after work has been completed) */}
+      <WorkCompletionRatingModal
+        visible={Boolean(justCompletedBooking)}
+        booking={justCompletedBooking || null}
+        onClose={() => setJustCompletedBooking(null)}
+        onSubmitSuccess={() => setJustCompletedBooking(null)}
+      />
     </View>
   );
 };

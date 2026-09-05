@@ -25,6 +25,7 @@ interface CustomerHomeScreenProps {
   onNavigateToBookings: () => void;
   onNavigateToEmergency: () => void;
   onNavigateToNotifications: () => void;
+  onNavigateToRate: (bookingId: string) => void;
 }
 
 export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
@@ -34,6 +35,7 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
   onNavigateToBookings,
   onNavigateToEmergency,
   onNavigateToNotifications,
+  onNavigateToRate,
 }) => {
   const { user } = useAuth();
   const { bookings } = useBookings();
@@ -63,7 +65,7 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
         {/* Welcome & Search Bar */}
         <View style={styles.welcomeSection}>
           <Text style={styles.greetingText}>{t('greeting')}, {user?.name.split(' ')[0] || 'Member'} 👋</Text>
-          <Text style={styles.heroSubtitle}>Find certified cooperative workers in your area</Text>
+          <Text style={styles.heroSubtitle}>{t('hero_subtitle')}</Text>
 
           <SearchBar
             value={searchQuery}
@@ -87,11 +89,13 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
             <View style={styles.emergencyBadge}>
               <Text style={styles.emergencyBadgeText}>PRIORITY 24x7</Text>
             </View>
-            <Text style={styles.emergencyTitle}>Emergency Cooperative Response</Text>
-            <Text style={styles.emergencySubtitle}>Electrician & plumber available in 20-30 mins</Text>
+            <Text style={styles.emergencyTitle}>{t('emergency_services')}</Text>
+            <Text style={styles.emergencySubtitle}>{t('emergency_subtitle')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.danger} />
         </TouchableOpacity>
+
+
 
         {/* Active Booking Tracker (if any) */}
         {activeBooking && (
@@ -99,10 +103,10 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
             <View style={styles.sectionHeader}>
               <View style={styles.activeTitleRow}>
                 <View style={styles.pulseGreenDot} />
-                <Text style={styles.sectionTitle}>Current Active Booking</Text>
+                <Text style={styles.sectionTitle}>{t('active_jobs')}</Text>
               </View>
               <TouchableOpacity onPress={onNavigateToBookings}>
-                <Text style={styles.seeAllText}>Track</Text>
+                <Text style={styles.seeAllText}>{t('track_worker')}</Text>
               </TouchableOpacity>
             </View>
 
@@ -338,5 +342,91 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 15,
+  },
+  reviewPromptSection: {
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  reviewPromptCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+  },
+  reviewPromptHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  reviewStarIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: borderRadius.round,
+    alignSelf: 'flex-start',
+    marginBottom: 3,
+  },
+  completedBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#15803D',
+  },
+  reviewPromptTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  reviewPromptSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  starRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    marginVertical: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: '#FEF08A',
+  },
+  starRowLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginRight: 4,
+  },
+  starBtn: {
+    padding: 2,
+  },
+  reviewActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md,
+    marginTop: 8,
+  },
+  reviewActionBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

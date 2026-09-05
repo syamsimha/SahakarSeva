@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Platform, useWindowDimensions, Text, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Platform, useWindowDimensions, Text, TouchableOpacity, Alert } from 'react-native';
 import { colors, borderRadius, spacing } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -11,11 +11,24 @@ interface DeviceFrameProps {
 
 export const DeviceFrame: React.FC<DeviceFrameProps> = ({ children }) => {
   const { width, height } = useWindowDimensions();
-  const { role, switchRole } = useAuth();
+  const { user, role, switchRole, logout } = useAuth();
   const { language, setLanguage } = useLanguage();
 
   const isWeb = Platform.OS === 'web';
   const isLargeScreen = isWeb && width > 520;
+
+  const handleRoleTabPress = (r: 'customer' | 'worker' | 'admin') => {
+    if (user && user.role !== r) {
+      const currentRole = user.role === 'customer' ? 'Customer' : user.role === 'worker' ? 'Worker' : 'Administrator';
+      const targetRole = r === 'customer' ? 'Customer' : r === 'worker' ? 'Worker' : 'Administrator';
+      Alert.alert(
+        'Access Denied (RBAC Protected)',
+        `Role-Based Access Control: You are authenticated as a ${currentRole}.\n\nAccess to the ${targetRole} dashboard is strictly restricted.\n\nPlease click "Sign Out" and log in with authorized ${targetRole} credentials.`
+      );
+      return;
+    }
+    switchRole(r);
+  };
 
   if (!isLargeScreen) {
     return <View style={styles.mobileFull}>{children}</View>;
@@ -32,17 +45,31 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({ children }) => {
           <Text style={styles.demoTitle}>Sahakar Sathi — Mobile App Preview</Text>
         </View>
 
-        {/* Quick Role Switcher */}
+        {/* Role Access Badges with Strict RBAC Lock */}
         <View style={styles.roleTabs}>
           {(['customer', 'worker', 'admin'] as const).map((r) => {
             const isActive = role === r;
+            const isLocked = Boolean(user && user.role !== r);
             return (
               <TouchableOpacity
                 key={r}
-                onPress={() => switchRole(r)}
-                style={[styles.roleTab, isActive && styles.roleTabActive]}
+                onPress={() => handleRoleTabPress(r)}
+                style={[
+                  styles.roleTab,
+                  isActive && styles.roleTabActive,
+                  isLocked && styles.roleTabLocked,
+                ]}
               >
-                <Text style={[styles.roleTabText, isActive && styles.roleTabTextActive]}>
+                {isLocked && (
+                  <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ marginRight: 3 }} />
+                )}
+                <Text
+                  style={[
+                    styles.roleTabText,
+                    isActive && styles.roleTabTextActive,
+                    isLocked && styles.roleTabTextLocked,
+                  ]}
+                >
                   {r === 'customer' ? 'Customer' : r === 'worker' ? 'Worker' : 'Admin'}
                 </Text>
               </TouchableOpacity>
@@ -67,6 +94,18 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({ children }) => {
             );
           })}
         </View>
+
+        {/* Quick Sign Out from Demo Frame */}
+        {user && (
+          <TouchableOpacity
+            onPress={() => logout()}
+            style={styles.demoSignOutBtn}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={12} color="#EF4444" style={{ marginRight: 3 }} />
+            <Text style={styles.demoSignOutText}>Sign Out</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Phone Bezel Container */}
@@ -141,6 +180,11 @@ const styles = StyleSheet.create({
   roleTabActive: {
     backgroundColor: colors.primary,
   },
+  roleTabLocked: {
+    opacity: 0.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   roleTabText: {
     fontSize: 10,
     color: '#94A3B8',
@@ -148,6 +192,9 @@ const styles = StyleSheet.create({
   },
   roleTabTextActive: {
     color: '#FFFFFF',
+  },
+  roleTabTextLocked: {
+    color: '#64748B',
   },
   langPills: {
     flexDirection: 'row',
@@ -169,6 +216,22 @@ const styles = StyleSheet.create({
   },
   langPillTextActive: {
     color: '#FFFFFF',
+  },
+  demoSignOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    marginLeft: 6,
+  },
+  demoSignOutText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#EF4444',
   },
   phoneChassis: {
     width: '100%',

@@ -16,12 +16,12 @@ export const ServiceCategoryCard: React.FC<ServiceCategoryCardProps> = ({
   onPress,
   variant = 'grid',
 }) => {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
 
   const getTitle = () => {
     if (language === 'hi' && category.hindiTitle) return category.hindiTitle;
     if (language === 'te' && category.teluguTitle) return category.teluguTitle;
-    return category.title;
+    return t(category.title);
   };
 
   if (variant === 'horizontal') {
@@ -41,7 +41,7 @@ export const ServiceCategoryCard: React.FC<ServiceCategoryCardProps> = ({
         <View style={styles.horizontalContent}>
           <Text style={styles.horizontalTitle}>{getTitle()}</Text>
           <Text style={styles.horizontalDesc} numberOfLines={1}>{category.description}</Text>
-          <Text style={styles.horizontalPrice}>Starts at ₹{category.basePrice}</Text>
+          <Text style={styles.horizontalPrice}>₹{category.basePrice}</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
       </TouchableOpacity>

@@ -11,6 +11,7 @@ import { Header } from '../../components/common';
 import { BookingCard } from '../../components/cards';
 import { EmptyState } from '../../components/ui';
 import { useBookings } from '../../context/BookingContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { BookingStatus, Booking } from '../../types';
 
 interface MyBookingsScreenProps {
@@ -30,6 +31,7 @@ export const MyBookingsScreen: React.FC<MyBookingsScreenProps> = ({
   onNavigateToServices,
   onBack,
 }) => {
+  const { t } = useLanguage();
   const { bookings } = useBookings();
   const [activeTab, setActiveTab] = useState<TabKey>('active');
 
@@ -57,16 +59,16 @@ export const MyBookingsScreen: React.FC<MyBookingsScreenProps> = ({
   const displayedBookings = filterBookings(activeTab);
 
   const tabs: Array<{ id: TabKey; label: string }> = [
-    { id: 'active', label: 'Active & In-Flight' },
-    { id: 'upcoming', label: 'Upcoming' },
-    { id: 'completed', label: 'Completed' },
-    { id: 'cancelled', label: 'Cancelled' },
+    { id: 'active', label: t('tab_active') },
+    { id: 'upcoming', label: t('tab_upcoming') },
+    { id: 'completed', label: t('tab_completed') },
+    { id: 'cancelled', label: t('tab_cancelled') },
   ];
 
   return (
     <View style={styles.container}>
       <Header
-        title="My Bookings"
+        title={t('nav_bookings')}
         showBack={Boolean(onBack)}
         onBack={onBack}
       />

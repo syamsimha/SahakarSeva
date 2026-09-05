@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Platform,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
@@ -15,8 +16,156 @@ import { serviceCategories, subServices } from '../../data';
 import { workerService } from '../../services';
 import { useAuth } from '../../context/AuthContext';
 import { useBookings } from '../../context/BookingContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { WorkerProfile, ServiceCategoryKey, Booking } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
+
+export interface DynamicDateOption {
+  id: string;
+  label: string;
+  subtext: string;
+  value: string;
+  fullDate: string;
+  isToday: boolean;
+  isTomorrow: boolean;
+  isoDate: string;
+}
+
+export interface TimeSlotDef {
+  id: string;
+  label: string;
+  subtitle: string;
+  startHour: number;
+  endHour: number;
+  isAsap?: boolean;
+}
+
+export const getDynamicDateOptions = (): DynamicDateOption[] => {
+  const options: DynamicDateOption[] = [];
+  const now = new Date();
+  const daysShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const fullDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const fullMonths = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  for (let i = 0; i < 7; i++) {
+    const target = new Date(now);
+    target.setDate(now.getDate() + i);
+
+    const dayNum = target.getDate();
+    const monthShort = monthsShort[target.getMonth()];
+    const dayShort = daysShort[target.getDay()];
+    const fullDay = fullDays[target.getDay()];
+    const fullMonth = fullMonths[target.getMonth()];
+    const year = target.getFullYear();
+    const isoDate = `${year}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+
+    if (i === 0) {
+      options.push({
+        id: 'today',
+        label: 'Today',
+        subtext: `${dayNum} ${monthShort}`,
+        value: `Today, ${dayNum} ${monthShort}`,
+        fullDate: `${fullDay}, ${dayNum} ${fullMonth} ${year}`,
+        isToday: true,
+        isTomorrow: false,
+        isoDate,
+      });
+    } else if (i === 1) {
+      options.push({
+        id: 'tomorrow',
+        label: 'Tomorrow',
+        subtext: `${dayNum} ${monthShort}`,
+        value: `Tomorrow, ${dayNum} ${monthShort}`,
+        fullDate: `${fullDay}, ${dayNum} ${fullMonth} ${year}`,
+        isToday: false,
+        isTomorrow: true,
+        isoDate,
+      });
+    } else {
+      options.push({
+        id: `day-${i}`,
+        label: `${dayShort}, ${dayNum} ${monthShort}`,
+        subtext: fullDay,
+        value: `${fullDay}, ${dayNum} ${monthShort}`,
+        fullDate: `${fullDay}, ${dayNum} ${fullMonth} ${year}`,
+        isToday: false,
+        isTomorrow: false,
+        isoDate,
+      });
+    }
+  }
+
+  return options;
+};
+
+export const ALL_TIME_SLOTS: TimeSlotDef[] = [
+  {
+    id: 'asap',
+    label: '⚡ Immediate / Right Now',
+    subtitle: 'Priority cooperative dispatch within 30-45 mins',
+    startHour: 0,
+    endHour: 24,
+    isAsap: true,
+  },
+  {
+    id: 'slot-1',
+    label: '08:30 AM - 10:30 AM',
+    subtitle: 'Morning Slot',
+    startHour: 8.5,
+    endHour: 10.5,
+  },
+  {
+    id: 'slot-2',
+    label: '10:30 AM - 12:30 PM',
+    subtitle: 'Late Morning Slot',
+    startHour: 10.5,
+    endHour: 12.5,
+  },
+  {
+    id: 'slot-3',
+    label: '02:00 PM - 04:00 PM',
+    subtitle: 'Afternoon Slot',
+    startHour: 14.0,
+    endHour: 16.0,
+  },
+  {
+    id: 'slot-4',
+    label: '04:30 PM - 06:30 PM',
+    subtitle: 'Late Afternoon Slot',
+    startHour: 16.5,
+    endHour: 18.5,
+  },
+  {
+    id: 'slot-5',
+    label: '06:30 PM - 08:30 PM',
+    subtitle: 'Evening Slot',
+    startHour: 18.5,
+    endHour: 20.5,
+  },
+  {
+    id: 'slot-6',
+    label: '08:30 PM - 10:30 PM',
+    subtitle: 'Night / Urgent Slot',
+    startHour: 20.5,
+    endHour: 22.5,
+  },
+];
+
+export const getInitialTimeSlot = (): string => {
+  const now = new Date();
+  const currentDecimalHour = now.getHours() + now.getMinutes() / 60;
+  const upcoming = ALL_TIME_SLOTS.find(
+    (s) => !s.isAsap && s.endHour > currentDecimalHour + 0.5
+  );
+  if (upcoming) {
+    return upcoming.label;
+  }
+  return '⚡ Immediate / Right Now (Within 30-45 mins)';
+};
 
 interface BookingFlowScreenProps {
   initialWorkerId?: string;
@@ -33,6 +182,7 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
 }) => {
   const { user } = useAuth();
   const { createBooking } = useBookings();
+  const { t } = useLanguage();
 
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 8;
@@ -47,11 +197,47 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   const [workersList, setWorkersList] = useState<WorkerProfile[]>([]);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>(initialWorkerId || 'worker-101');
 
-  // Step 3: Date
-  const [selectedDate, setSelectedDate] = useState<string>('Today, 2 March');
+  // Dynamic Date & Time states
+  const dateOptions = getDynamicDateOptions();
+  const [selectedDate, setSelectedDate] = useState<string>(dateOptions[0].value);
+  const [isCustomDateActive, setIsCustomDateActive] = useState<boolean>(false);
+  const [customDateValue, setCustomDateValue] = useState<string>('');
 
-  // Step 4: Time Slot
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('10:00 AM - 12:00 PM');
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>(getInitialTimeSlot());
+  const [isCustomTimeActive, setIsCustomTimeActive] = useState<boolean>(false);
+  const [customTimeValue, setCustomTimeValue] = useState<string>('');
+
+  // Live clock display
+  const [currentLiveClock, setCurrentLiveClock] = useState<string>(() => {
+    const now = new Date();
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    let hours = now.getHours();
+    const minutes = now.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+    return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} • ${hours}:${minutesStr} ${ampm}`;
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      let hours = now.getHours();
+      const minutes = now.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+      setCurrentLiveClock(
+        `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} • ${hours}:${minutesStr} ${ampm}`
+      );
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Step 5: Location
   const [addressLine, setAddressLine] = useState(
@@ -141,25 +327,41 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
     }
   };
 
-  const timeSlots = [
-    '08:30 AM - 10:30 AM',
-    '10:30 AM - 12:30 PM',
-    '02:00 PM - 04:00 PM',
-    '04:30 PM - 06:30 PM',
-    '06:30 PM - 08:30 PM',
-  ];
+  const now = new Date();
+  const currentDecimalHour = now.getHours() + now.getMinutes() / 60;
+  const isSelectedDateToday = selectedDate.startsWith('Today');
 
-  const dateOptions = [
-    { label: 'Today', value: 'Today, 2 March' },
-    { label: 'Tomorrow', value: 'Tomorrow, 3 March' },
-    { label: 'Mon, 4 Mar', value: 'Monday, 4 March' },
-    { label: 'Tue, 5 Mar', value: 'Tuesday, 5 March' },
-  ];
+  // GPS / Geolocation detection
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const handleDetectGPSLocation = () => {
+    setIsDetectingLocation(true);
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setAddressLine(`GPS Verified: ${pos.coords.latitude.toFixed(4)}° N, ${pos.coords.longitude.toFixed(4)}° E`);
+          setLandmark('Current Live GPS Coordinates Detected');
+          setIsDetectingLocation(false);
+        },
+        () => {
+          setAddressLine('Flat 402, Shanti Niketan, 12th Main, Indiranagar');
+          setLandmark('Opposite Defense Colony Park (GPS Hub)');
+          setIsDetectingLocation(false);
+        },
+        { timeout: 5000 }
+      );
+    } else {
+      setTimeout(() => {
+        setAddressLine('Flat 402, Shanti Niketan, 12th Main, Indiranagar');
+        setLandmark('Opposite Defense Colony Park (GPS Hub)');
+        setIsDetectingLocation(false);
+      }, 500);
+    }
+  };
 
   return (
     <View style={styles.container}>
       <Header
-        title={`Book Service (Step ${currentStep}/${totalSteps})`}
+        title={`${t('book_now')} (${t('Step')} ${currentStep}/${totalSteps})`}
         showBack
         onBack={handleBack}
       />
@@ -265,27 +467,196 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
             <Text style={styles.stepTitle}>3. Select Service Date</Text>
             <Text style={styles.stepSubtitle}>When would you like the cooperative worker to visit?</Text>
 
+            {/* Live Clock Status Banner */}
+            <View style={styles.liveClockBanner}>
+              <View style={styles.liveIndicatorRow}>
+                <View style={styles.livePulseDot} />
+                <Text style={styles.liveBadgeText}>LIVE SYSTEM TIME & DATE</Text>
+              </View>
+              <Text style={styles.liveClockValue}>{currentLiveClock}</Text>
+            </View>
+
+            {/* Quick One-Tap Action: Today & Immediate Time */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[
+                styles.immediateCard,
+                selectedDate.startsWith('Today') && selectedTimeSlot.includes('Immediate') && styles.immediateCardActive,
+              ]}
+              onPress={() => {
+                setSelectedDate(dateOptions[0].value);
+                setSelectedTimeSlot('⚡ Immediate / Right Now (Within 30-45 mins)');
+                setIsCustomDateActive(false);
+                setIsCustomTimeActive(false);
+              }}
+            >
+              <View style={styles.immediateIconCircle}>
+                <Ionicons name="flash" size={20} color="#D97706" />
+              </View>
+              <View style={styles.immediateCardText}>
+                <View style={styles.immediateTagRow}>
+                  <Text style={styles.immediateCardTitle}>Book for Current Date & Time</Text>
+                  <View style={styles.asapBadge}>
+                    <Text style={styles.asapBadgeText}>RIGHT NOW</Text>
+                  </View>
+                </View>
+                <Text style={styles.immediateCardSubtitle}>
+                  Immediate dispatch to your doorstep within 30-45 mins (Live Slot)
+                </Text>
+              </View>
+              <Ionicons
+                name={selectedDate.startsWith('Today') && selectedTimeSlot.includes('Immediate') ? 'checkmark-circle' : 'chevron-forward'}
+                size={22}
+                color={selectedDate.startsWith('Today') && selectedTimeSlot.includes('Immediate') ? colors.primary : colors.textSecondary}
+              />
+            </TouchableOpacity>
+
+            <View style={styles.dateSectionHeaderRow}>
+              <Text style={styles.sectionSubHeader}>Rolling 7-Day Calendar</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedDate(dateOptions[0].value);
+                  setIsCustomDateActive(false);
+                }}
+              >
+                <Text style={styles.todayJumpText}>Jump to Today</Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.datesGrid}>
               {dateOptions.map((opt) => {
-                const isSelected = selectedDate === opt.value;
+                const isSelected = !isCustomDateActive && selectedDate === opt.value;
                 return (
                   <TouchableOpacity
-                    key={opt.value}
-                    onPress={() => setSelectedDate(opt.value)}
+                    key={opt.id}
+                    onPress={() => {
+                      setSelectedDate(opt.value);
+                      setIsCustomDateActive(false);
+                    }}
                     style={[styles.dateCard, isSelected && styles.dateCardActive]}
                   >
-                    <Ionicons
-                      name="calendar"
-                      size={22}
-                      color={isSelected ? colors.primary : colors.textSecondary}
-                    />
+                    <View style={styles.dateCardHeader}>
+                      <Ionicons
+                        name="calendar"
+                        size={20}
+                        color={isSelected ? colors.primary : colors.textSecondary}
+                      />
+                      {opt.isToday && (
+                        <View style={styles.currentDayChip}>
+                          <Text style={styles.currentDayChipText}>CURRENT</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={[styles.dateLabel, isSelected && styles.dateLabelActive]}>
                       {opt.label}
                     </Text>
-                    <Text style={styles.dateSubtext}>{opt.value.split(',')[1] || opt.value}</Text>
+                    <Text style={styles.dateSubtext}>{opt.subtext}</Text>
                   </TouchableOpacity>
                 );
               })}
+
+              {/* Custom Date Option Card */}
+              <TouchableOpacity
+                onPress={() => setIsCustomDateActive(true)}
+                style={[styles.dateCard, isCustomDateActive && styles.dateCardActive]}
+              >
+                <Ionicons
+                  name="calendar-number-outline"
+                  size={20}
+                  color={isCustomDateActive ? colors.primary : colors.textSecondary}
+                />
+                <Text style={[styles.dateLabel, isCustomDateActive && styles.dateLabelActive]}>
+                  Custom Date
+                </Text>
+                <Text style={styles.dateSubtext}>Pick any date</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Custom Date Input Field */}
+            {isCustomDateActive && (
+              <View style={styles.customDateBox}>
+                <Text style={styles.customDateTitle}>Enter or Select Future Service Date</Text>
+                <View style={styles.customDateInputRow}>
+                  <TextInput
+                    style={[styles.textInput, { flex: 1 }]}
+                    placeholder="YYYY-MM-DD or DD Month (e.g. 15 Sep)"
+                    value={customDateValue}
+                    onChangeText={(val) => {
+                      setCustomDateValue(val);
+                      if (val.trim()) {
+                        setSelectedDate(val.trim());
+                      }
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={styles.applyDateBtn}
+                    onPress={() => {
+                      if (customDateValue.trim()) {
+                        setSelectedDate(customDateValue.trim());
+                      }
+                    }}
+                  >
+                    <Text style={styles.applyDateBtnText}>Set</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Quick Preferred Time Slot in Step 3 */}
+            <View style={styles.step3TimeContainer}>
+              <View style={styles.step3TimeHeaderRow}>
+                <Text style={styles.sectionSubHeader}>Select Preferred Time for {selectedDate}</Text>
+                <TouchableOpacity onPress={() => setCurrentStep(4)}>
+                  <Text style={styles.seeAllSlotsText}>View All Slots ›</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizTimePills}>
+                {ALL_TIME_SLOTS.slice(0, 5).map((slot) => {
+                  const isPast = isSelectedDateToday && !slot.isAsap && currentDecimalHour >= slot.endHour;
+                  const isSelected = selectedTimeSlot === slot.label;
+                  return (
+                    <TouchableOpacity
+                      key={slot.id}
+                      disabled={isPast}
+                      onPress={() => {
+                        setSelectedTimeSlot(slot.label);
+                        setIsCustomTimeActive(false);
+                      }}
+                      style={[
+                        styles.quickTimePill,
+                        isSelected && styles.quickTimePillActive,
+                        isPast && styles.quickTimePillDisabled,
+                      ]}
+                    >
+                      <Ionicons
+                        name={slot.isAsap ? 'flash' : 'time-outline'}
+                        size={14}
+                        color={isPast ? colors.textMuted : isSelected ? colors.primary : colors.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.quickTimePillText,
+                          isSelected && styles.quickTimePillTextActive,
+                          isPast && styles.quickTimePillTextDisabled,
+                        ]}
+                      >
+                        {slot.isAsap ? '⚡ Right Now' : slot.label.split(' - ')[0]}
+                      </Text>
+                      {isPast && <Text style={styles.pastMiniTag}>Past</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Selection Summary Banner */}
+            <View style={styles.selectionSummaryBanner}>
+              <Ionicons name="checkmark-done-circle" size={18} color={colors.primary} />
+              <Text style={styles.selectionSummaryText}>
+                Selected: <Text style={{ fontWeight: '700' }}>{selectedDate}</Text> at{' '}
+                <Text style={{ fontWeight: '700' }}>{selectedTimeSlot}</Text>
+              </Text>
             </View>
           </View>
         )}
@@ -294,32 +665,133 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
         {currentStep === 4 && (
           <View style={styles.stepBox}>
             <Text style={styles.stepTitle}>4. Select Time Slot</Text>
-            <Text style={styles.stepSubtitle}>Choose a 2-hour window that fits your schedule</Text>
+            <Text style={styles.stepSubtitle}>
+              Available 2-hour cooperative service windows for {selectedDate}
+            </Text>
+
+            {isSelectedDateToday && (
+              <View style={styles.liveClockBanner}>
+                <View style={styles.liveIndicatorRow}>
+                  <View style={styles.livePulseDot} />
+                  <Text style={styles.liveBadgeText}>CURRENT TIME: {currentLiveClock.split('•')[1] || currentLiveClock}</Text>
+                </View>
+                <Text style={styles.liveSubNotice}>
+                  Past time slots for today are automatically marked unavailable
+                </Text>
+              </View>
+            )}
 
             <View style={styles.slotsList}>
-              {timeSlots.map((slot) => {
-                const isSelected = selectedTimeSlot === slot;
+              {ALL_TIME_SLOTS.map((slot) => {
+                const isPast = isSelectedDateToday && !slot.isAsap && currentDecimalHour >= slot.endHour;
+                const isSelected = !isCustomTimeActive && selectedTimeSlot === slot.label;
                 return (
                   <TouchableOpacity
-                    key={slot}
-                    onPress={() => setSelectedTimeSlot(slot)}
-                    style={[styles.slotItem, isSelected && styles.slotItemActive]}
+                    key={slot.id}
+                    disabled={isPast}
+                    onPress={() => {
+                      setSelectedTimeSlot(slot.label);
+                      setIsCustomTimeActive(false);
+                    }}
+                    style={[
+                      styles.slotItem,
+                      isSelected && styles.slotItemActive,
+                      isPast && styles.slotItemDisabled,
+                    ]}
                   >
-                    <Ionicons
-                      name="time-outline"
-                      size={18}
-                      color={isSelected ? colors.primary : colors.textSecondary}
-                    />
-                    <Text style={[styles.slotText, isSelected && styles.slotTextActive]}>
-                      {slot}
-                    </Text>
+                    <View style={styles.slotIconBox}>
+                      <Ionicons
+                        name={slot.isAsap ? 'flash' : 'time-outline'}
+                        size={20}
+                        color={isPast ? colors.textMuted : isSelected ? colors.primary : colors.textSecondary}
+                      />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                      <View style={styles.slotTitleRow}>
+                        <Text
+                          style={[
+                            styles.slotText,
+                            isSelected && styles.slotTextActive,
+                            isPast && styles.slotTextDisabled,
+                          ]}
+                        >
+                          {slot.label}
+                        </Text>
+                        {slot.isAsap ? (
+                          <View style={styles.liveDispatchChip}>
+                            <Text style={styles.liveDispatchChipText}>PRIORITY</Text>
+                          </View>
+                        ) : isPast ? (
+                          <View style={styles.pastChip}>
+                            <Text style={styles.pastChipText}>PASSED</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.availableChip}>
+                            <Text style={styles.availableChipText}>AVAILABLE</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.slotSubtitle}>{slot.subtitle}</Text>
+                    </View>
                     {isSelected && (
-                      <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                      <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
                     )}
                   </TouchableOpacity>
                 );
               })}
+
+              {/* Custom Time Selection Option */}
+              <TouchableOpacity
+                onPress={() => setIsCustomTimeActive(true)}
+                style={[styles.slotItem, isCustomTimeActive && styles.slotItemActive]}
+              >
+                <View style={styles.slotIconBox}>
+                  <Ionicons
+                    name="alarm-outline"
+                    size={20}
+                    color={isCustomTimeActive ? colors.primary : colors.textSecondary}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                  <Text style={[styles.slotText, isCustomTimeActive && styles.slotTextActive]}>
+                    Custom Preferred Time
+                  </Text>
+                  <Text style={styles.slotSubtitle}>Specify your own arrival time</Text>
+                </View>
+                {isCustomTimeActive && (
+                  <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                )}
+              </TouchableOpacity>
             </View>
+
+            {isCustomTimeActive && (
+              <View style={styles.customTimeBox}>
+                <Text style={styles.customDateTitle}>Enter Custom Arrival Time</Text>
+                <View style={styles.customDateInputRow}>
+                  <TextInput
+                    style={[styles.textInput, { flex: 1 }]}
+                    placeholder="e.g. 03:30 PM, 11:15 AM"
+                    value={customTimeValue}
+                    onChangeText={(val) => {
+                      setCustomTimeValue(val);
+                      if (val.trim()) {
+                        setSelectedTimeSlot(`Custom: ${val.trim()}`);
+                      }
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={styles.applyDateBtn}
+                    onPress={() => {
+                      if (customTimeValue.trim()) {
+                        setSelectedTimeSlot(`Custom: ${customTimeValue.trim()}`);
+                      }
+                    }}
+                  >
+                    <Text style={styles.applyDateBtnText}>Set</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </View>
         )}
 
@@ -328,6 +800,22 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
           <View style={styles.stepBox}>
             <Text style={styles.stepTitle}>5. Confirm Service Location</Text>
             <Text style={styles.stepSubtitle}>Where should the cooperative technician report?</Text>
+
+            {/* GPS Location Button */}
+            <TouchableOpacity
+              style={styles.gpsDetectBtn}
+              onPress={handleDetectGPSLocation}
+              disabled={isDetectingLocation}
+            >
+              <Ionicons
+                name={isDetectingLocation ? 'sync' : 'navigate'}
+                size={16}
+                color={colors.primary}
+              />
+              <Text style={styles.gpsDetectBtnText}>
+                {isDetectingLocation ? 'Detecting GPS Co-ordinates...' : 'Use Current Live GPS Location'}
+              </Text>
+            </TouchableOpacity>
 
             <Text style={styles.inputLabel}>Street Address / Flat Number</Text>
             <TextInput
@@ -493,14 +981,14 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
       {/* Floating Bottom Step Bar */}
       <View style={styles.stepFooter}>
         <Button
-          title={currentStep === 1 ? 'Cancel' : 'Back'}
+          title={currentStep === 1 ? t('cancel') : t('back')}
           onPress={handleBack}
           variant="outline"
           size="md"
           style={{ minWidth: 100 }}
         />
         <Button
-          title={currentStep === totalSteps ? 'Confirm & Book' : 'Continue'}
+          title={currentStep === totalSteps ? t('confirm_and_pay') : t('next')}
           icon={currentStep === totalSteps ? 'checkmark-done' : 'arrow-forward'}
           iconPosition="right"
           onPress={handleNext}
@@ -882,6 +1370,318 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     flex: 1,
     lineHeight: 16,
+  },
+  // Live clock banner
+  liveClockBanner: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  liveIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  livePulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#16A34A',
+    marginRight: 6,
+  },
+  liveBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#15803D',
+    letterSpacing: 0.5,
+  },
+  liveClockValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  liveSubNotice: {
+    fontSize: 11,
+    color: '#15803D',
+    marginTop: 2,
+  },
+  // Immediate booking action card
+  immediateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  immediateCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  immediateIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FEF3C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  immediateCardText: {
+    flex: 1,
+    marginLeft: spacing.sm,
+  },
+  immediateTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  immediateCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  immediateCardSubtitle: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  asapBadge: {
+    backgroundColor: '#D97706',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  asapBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  // Date section header
+  dateSectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    marginTop: 4,
+  },
+  sectionSubHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  todayJumpText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  dateCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  currentDayChip: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  currentDayChipText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  // Custom date / time box
+  customDateBox: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  customDateTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 6,
+  },
+  customDateInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  applyDateBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    height: 46,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyDateBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  // Step 3 time selection
+  step3TimeContainer: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  step3TimeHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  seeAllSlotsText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  horizTimePills: {
+    flexDirection: 'row',
+  },
+  quickTimePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: borderRadius.round,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    marginRight: 8,
+  },
+  quickTimePillActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  quickTimePillDisabled: {
+    opacity: 0.45,
+    backgroundColor: '#F3F4F6',
+  },
+  quickTimePillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  quickTimePillTextActive: {
+    color: colors.primary,
+  },
+  quickTimePillTextDisabled: {
+    color: colors.textMuted,
+  },
+  pastMiniTag: {
+    fontSize: 9,
+    color: colors.textMuted,
+    marginLeft: 2,
+  },
+  // Selection summary banner
+  selectionSummaryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryLight,
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.md,
+  },
+  selectionSummaryText: {
+    fontSize: 12,
+    color: colors.primary,
+    marginLeft: 6,
+    flex: 1,
+  },
+  // Step 4 slots enhancements
+  slotIconBox: {
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slotTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  slotSubtitle: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  slotItemDisabled: {
+    opacity: 0.5,
+    backgroundColor: '#F9FAFB',
+  },
+  slotTextDisabled: {
+    color: colors.textMuted,
+  },
+  liveDispatchChip: {
+    backgroundColor: '#D97706',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  liveDispatchChipText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  pastChip: {
+    backgroundColor: '#E5E7EB',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  pastChipText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  availableChip: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  availableChipText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+  customTimeBox: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  // GPS detect button in Step 5
+  gpsDetectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: 10,
+    marginBottom: spacing.md,
+  },
+  gpsDetectBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
   },
   stepFooter: {
     position: 'absolute',

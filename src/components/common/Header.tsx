@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { colors, borderRadius, spacing, typography } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -28,19 +28,23 @@ export const Header: React.FC<HeaderProps> = ({
   onNotificationPress,
   unreadNotificationsCount = 2,
 }) => {
-  const { role } = useAuth();
-  const { language } = useLanguage();
+  const { user, role } = useAuth();
+  const { language, t } = useLanguage();
   const [langModalVisible, setLangModalVisible] = useState(false);
   const [roleModalVisible, setRoleModalVisible] = useState(false);
+
+  const handleRolePress = () => {
+    setRoleModalVisible(true);
+  };
 
   const getRoleLabel = () => {
     switch (role) {
       case 'worker':
-        return 'Worker';
+        return t('worker');
       case 'admin':
-        return 'Admin';
+        return t('admin');
       default:
-        return 'Customer';
+        return t('customer');
     }
   };
 
@@ -61,14 +65,28 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Left Side: Back button or Brand / Location */}
         <View style={styles.leftContainer}>
           {showBack ? (
-            <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={22} color={colors.text} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+                <Ionicons name="arrow-back" size={22} color={colors.text} />
+              </TouchableOpacity>
+              {title && (
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.brandTitle} numberOfLines={1}>
+                    {t(title)}
+                  </Text>
+                  {subtitle && (
+                    <Text style={styles.brandSubtitle} numberOfLines={1}>
+                      {t(subtitle)}
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
           ) : showLocation ? (
             <View style={styles.locationContainer}>
               <View style={styles.locationHeaderRow}>
                 <Ionicons name="location" size={14} color={colors.primary} />
-                <Text style={styles.locationLabel}>Current Location</Text>
+                <Text style={styles.locationLabel}>{t('current_location')}</Text>
                 <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
               </View>
               <Text style={styles.locationValue} numberOfLines={1}>
@@ -81,8 +99,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <Ionicons name="people" size={16} color={colors.textInverse} />
               </View>
               <View>
-                <Text style={styles.brandTitle}>{title || 'Sahakar Sathi'}</Text>
-                {subtitle && <Text style={styles.brandSubtitle}>{subtitle}</Text>}
+                <Text style={styles.brandTitle}>{title ? t(title) : t('app_name')}</Text>
+                {subtitle && <Text style={styles.brandSubtitle}>{t(subtitle)}</Text>}
               </View>
             </View>
           )}
@@ -90,10 +108,10 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Actions: Role pill, Lang pill, Notification bell */}
         <View style={styles.rightContainer}>
-          {/* Quick Role Switcher Pill */}
+          {/* Verified Role Access Pill */}
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => setRoleModalVisible(true)}
+            onPress={handleRolePress}
             style={[styles.rolePill, { borderColor: getRoleColor() }]}
           >
             <View style={[styles.roleDot, { backgroundColor: getRoleColor() }]} />

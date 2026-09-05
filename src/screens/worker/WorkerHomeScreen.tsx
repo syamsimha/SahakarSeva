@@ -9,8 +9,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
-import { JobRequestCard, BookingCard, StatCard } from '../../components/cards';
-import { Button } from '../../components/ui';
+import { StatCard } from '../../components/cards';
 import { useAuth } from '../../context/AuthContext';
 import { useBookings } from '../../context/BookingContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -35,7 +34,7 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
   onNavigateToNotifications,
 }) => {
   const { user } = useAuth();
-  const { bookings, acceptJob, rejectJob, updateStatus } = useBookings();
+  const { bookings } = useBookings();
   const { t } = useLanguage();
 
   const worker = user as WorkerProfile;
@@ -132,91 +131,57 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
           <Ionicons name="chevron-forward" size={18} color={colors.primary} />
         </TouchableOpacity>
 
-        {/* Immediate Pending Job Requests */}
-        {pendingRequests.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.badgeTitleRow}>
-                <Text style={styles.sectionTitle}>New Incoming Job Requests</Text>
-                <View style={styles.countBadge}>
-                  <Text style={styles.countText}>{pendingRequests.length}</Text>
-                </View>
-              </View>
-              <TouchableOpacity onPress={onNavigateToJobRequests}>
-                <Text style={styles.seeAllText}>View All</Text>
-              </TouchableOpacity>
+        {/* Dispatch & Operations Hub (Replaced inline listings) */}
+        <View style={styles.operationsCard}>
+          <Text style={styles.operationsTitle}>Dispatch & Job Operations</Text>
+
+          <TouchableOpacity
+            style={styles.operationRow}
+            onPress={onNavigateToJobRequests}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.opIconBox, { backgroundColor: colors.accentLight }]}>
+              <Ionicons name="git-pull-request" size={20} color={colors.accent} />
             </View>
-
-            {pendingRequests.slice(0, 2).map((job) => (
-              <JobRequestCard
-                key={job.id}
-                booking={job}
-                onAccept={() => acceptJob(job.id)}
-                onReject={() => rejectJob(job.id)}
-              />
-            ))}
-          </View>
-        )}
-
-        {/* Active Jobs in Progress */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Current Active Jobs ({activeJobs.length})</Text>
-            <TouchableOpacity onPress={onNavigateToJobManagement}>
-              <Text style={styles.seeAllText}>Manage</Text>
-            </TouchableOpacity>
-          </View>
-
-          {activeJobs.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Ionicons name="checkmark-circle-outline" size={36} color={colors.primary} />
-              <Text style={styles.emptyTitle}>No Jobs Currently In Progress</Text>
-              <Text style={styles.emptySub}>
-                Accept incoming requests above to dispatch and commence service.
+            <View style={{ flex: 1 }}>
+              <Text style={styles.opTitle}>Incoming Job Requests</Text>
+              <Text style={styles.opSub}>
+                {pendingRequests.length > 0
+                  ? `${pendingRequests.length} citizen requests waiting for acceptance`
+                  : 'No new incoming requests right now'}
               </Text>
             </View>
-          ) : (
-            activeJobs.map((job) => (
-              <View key={job.id} style={styles.activeJobItem}>
-                <BookingCard booking={job} onPress={onNavigateToJobManagement} />
-
-                {/* Direct Action Stepper for Worker */}
-                <View style={styles.jobActionsBar}>
-                  {job.status === 'accepted' && (
-                    <Button
-                      title="Start Driving (On The Way)"
-                      icon="bicycle"
-                      onPress={() => updateStatus(job.id, 'on_the_way')}
-                      variant="primary"
-                      size="sm"
-                      fullWidth
-                    />
-                  )}
-                  {job.status === 'on_the_way' && (
-                    <Button
-                      title="Arrived at Site • Start Work"
-                      icon="construct"
-                      onPress={() => updateStatus(job.id, 'in_progress')}
-                      variant="secondary"
-                      size="sm"
-                      fullWidth
-                    />
-                  )}
-                  {job.status === 'in_progress' && (
-                    <Button
-                      title="Mark Job Completed"
-                      icon="checkmark-done"
-                      onPress={() => updateStatus(job.id, 'completed')}
-                      variant="primary"
-                      size="sm"
-                      fullWidth
-                      style={{ backgroundColor: colors.success }}
-                    />
-                  )}
-                </View>
+            {pendingRequests.length > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>{pendingRequests.length}</Text>
               </View>
-            ))
-          )}
+            )}
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.operationRow, { borderBottomWidth: 0 }]}
+            onPress={onNavigateToJobManagement}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.opIconBox, { backgroundColor: colors.primaryLight }]}>
+              <Ionicons name="construct" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.opTitle}>Active Jobs Management</Text>
+              <Text style={styles.opSub}>
+                {activeJobs.length > 0
+                  ? `${activeJobs.length} active jobs in-flight. Tap to manage & update status`
+                  : 'All assigned jobs completed or on standby'}
+              </Text>
+            </View>
+            {activeJobs.length > 0 && (
+              <View style={[styles.countBadge, { backgroundColor: colors.info }]}>
+                <Text style={styles.countText}>{activeJobs.length}</Text>
+              </View>
+            )}
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
         </View>
 
         {/* Quick Links / Tools */}
@@ -415,5 +380,47 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  operationsCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  operationsTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  operationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  opIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  opTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  opSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1,
   },
 });

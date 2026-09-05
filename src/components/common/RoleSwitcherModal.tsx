@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  Alert,
 } from 'react-native';
 import { colors, borderRadius, spacing, typography } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
@@ -18,9 +19,18 @@ interface RoleSwitcherModalProps {
 }
 
 export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({ visible, onClose }) => {
-  const { role, switchRole } = useAuth();
+  const { user, role, switchRole, logout } = useAuth();
 
   const handleSelect = async (r: UserRole) => {
+    if (user && user.role !== r) {
+      const currentLabel = user.role === 'customer' ? 'Customer' : user.role === 'worker' ? 'Worker' : 'Administrator';
+      const targetLabel = r === 'customer' ? 'Customer' : r === 'worker' ? 'Worker' : 'Administrator';
+      Alert.alert(
+        'Access Denied (RBAC Protected)',
+        `Role-Based Access Control: You are authenticated as a ${currentLabel}.\n\nAccess to the ${targetLabel} dashboard is strictly restricted.\n\nTo access ${targetLabel} features, please Sign Out and log in with verified credentials.`
+      );
+      return;
+    }
     await switchRole(r);
     onClose();
   };
@@ -68,8 +78,12 @@ export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({ visible, o
             <View style={styles.content}>
               <View style={styles.header}>
                 <View>
-                  <Text style={styles.title}>Switch Experience Mode</Text>
-                  <Text style={styles.subtitle}>Demo all three Sahakar Sathi stakeholders</Text>
+                  <Text style={styles.title}>Role-Based Access Control</Text>
+                  <Text style={styles.subtitle}>
+                    {user
+                      ? `Authenticated: ${user.role.toUpperCase()} (Restricted Access)`
+                      : 'Role Access Control'}
+                  </Text>
                 </View>
                 <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                   <Ionicons name="close" size={20} color={colors.textSecondary} />
@@ -79,29 +93,70 @@ export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({ visible, o
               <View style={styles.list}>
                 {roles.map((item) => {
                   const isSelected = role === item.id;
+                  const isRestricted = Boolean(user && user.role !== item.id);
+
                   return (
                     <TouchableOpacity
                       key={item.id}
                       activeOpacity={0.7}
                       onPress={() => handleSelect(item.id)}
-                      style={[styles.roleItem, isSelected && styles.roleItemSelected]}
+                      style={[
+                        styles.roleItem,
+                        isSelected && styles.roleItemSelected,
+                        isRestricted && styles.roleItemRestricted,
+                      ]}
                     >
                       <View style={[styles.iconCircle, { backgroundColor: `${item.badgeColor}18` }]}>
                         <Ionicons name={item.icon} size={22} color={item.badgeColor} />
                       </View>
                       <View style={styles.roleTexts}>
-                        <Text style={[styles.roleTitle, isSelected && { color: item.badgeColor }]}>
-                          {item.title}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={[styles.roleTitle, isSelected && { color: item.badgeColor }]}>
+                            {item.title}
+                          </Text>
+                          {isRestricted && (
+                            <View style={styles.restrictedBadge}>
+                              <Ionicons name="lock-closed" size={10} color={colors.danger} />
+                              <Text style={styles.restrictedBadgeText}>LOCKED</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.roleDesc}>
+                          {isRestricted
+                            ? `Restricted: ${user?.role.toUpperCase()} cannot access ${item.id} dashboard.`
+                            : item.description}
                         </Text>
-                        <Text style={styles.roleDesc}>{item.description}</Text>
                       </View>
                       {isSelected && (
                         <Ionicons name="radio-button-on" size={20} color={item.badgeColor} />
+                      )}
+                      {isRestricted && !isSelected && (
+                        <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
                       )}
                     </TouchableOpacity>
                   );
                 })}
               </View>
+
+              {/* Instant Sign Out Option for Role Switch */}
+              {user && (
+                <View style={styles.signOutBox}>
+                  <Text style={styles.signOutBoxText}>
+                    Signed in as {user.role === 'customer' ? 'Customer' : user.role === 'worker' ? 'Worker' : 'Administrator'}. Cross-dashboard access is restricted by RBAC policy.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.signOutBtn}
+                    onPress={async () => {
+                      onClose();
+                      await logout();
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="log-out-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.signOutBtnText}>Sign Out to Switch Dashboard</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </TouchableWithoutFeedback>
         </View>
@@ -168,6 +223,26 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.primaryLight,
   },
+  roleItemRestricted: {
+    opacity: 0.65,
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  restrictedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: borderRadius.round,
+  },
+  restrictedBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.danger,
+    letterSpacing: 0.5,
+  },
   iconCircle: {
     width: 44,
     height: 44,
@@ -190,5 +265,36 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 15,
+  },
+  signOutBox: {
+    marginTop: spacing.md,
+    backgroundColor: '#FEF2F2',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    alignItems: 'center',
+  },
+  signOutBoxText: {
+    fontSize: 11,
+    color: '#991B1B',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    lineHeight: 15,
+  },
+  signOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.danger,
+    borderRadius: borderRadius.md,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    width: '100%',
+  },
+  signOutBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

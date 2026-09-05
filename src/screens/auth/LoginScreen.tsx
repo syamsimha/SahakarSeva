@@ -8,6 +8,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Button } from '../../components/ui';
@@ -31,8 +32,35 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (roleToUse: UserRole = selectedRole) => {
-    await login(roleToUse, identifier, password);
-    onLoginSuccess();
+    let currentId = identifier;
+
+    if (roleToUse === 'admin') {
+      if (selectedRole !== 'admin') {
+        currentId = '9448088990';
+        setIdentifier('9448088990');
+      } else {
+        const cleanId = identifier.replace(/\s+/g, '').replace('+91', '');
+        const isMasterAdmin =
+          cleanId === '9448088990' ||
+          identifier.toLowerCase().includes('lakshmi.admin') ||
+          identifier.toLowerCase().includes('admin');
+
+        if (!isMasterAdmin && identifier.trim().length > 0) {
+          Alert.alert(
+            'Single Admin Protocol Enforced',
+            'Only the single designated Master Administrator (+91 94480 88990) is authorized to log in and control all district jobs.\n\nMultiple administrative accounts are strictly prohibited.'
+          );
+          return;
+        }
+      }
+    }
+
+    try {
+      await login(roleToUse, currentId, password);
+      onLoginSuccess();
+    } catch (err: any) {
+      Alert.alert('Sign In Denied', err.message || 'Authentication error');
+    }
   };
 
   return (
@@ -106,7 +134,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   selectedRole === 'admin' && styles.demoBtnTextActive,
                 ]}
               >
-                Admin
+                Admin (Sole Controller)
               </Text>
             </TouchableOpacity>
           </View>

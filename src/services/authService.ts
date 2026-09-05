@@ -10,12 +10,25 @@ class AuthService {
     });
   }
 
-  async login(role: UserRole, _identifier?: string, _password?: string): Promise<AppUser> {
-    return new Promise((resolve) => {
+  async login(role: UserRole, identifier?: string, _password?: string): Promise<AppUser> {
+    return new Promise((resolve, reject) => {
       setTimeout(() => {
         if (role === 'worker') {
           this.currentUser = { ...mockWorkerUser };
         } else if (role === 'admin') {
+          // Single Administrator Protocol:
+          // Only one authorized Master Admin (Lakshmi Narayana - +91 94480 88990) is allowed to sign in and control all jobs.
+          if (identifier && identifier.trim().length > 0) {
+            const cleanId = identifier.replace(/\s+/g, '').replace('+91', '');
+            const isMasterAdmin =
+              cleanId === '9448088990' ||
+              identifier.toLowerCase().includes('lakshmi.admin') ||
+              identifier.toLowerCase().includes('admin');
+            if (!isMasterAdmin) {
+              reject(new Error('Single Admin Policy: Multiple administrators are not permitted. Only the designated Master Administrator (+91 94480 88990) can control district operations and all jobs.'));
+              return;
+            }
+          }
           this.currentUser = { ...mockAdminUser };
         } else {
           this.currentUser = { ...mockCustomer };
@@ -57,6 +70,18 @@ class AuthService {
         this.currentUser = newWorker;
         resolve(newWorker);
       }, 400);
+    });
+  }
+
+  async updateUser(data: Partial<AppUser>): Promise<AppUser> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        this.currentUser = {
+          ...this.currentUser,
+          ...data,
+        } as AppUser;
+        resolve(this.currentUser);
+      }, 150);
     });
   }
 

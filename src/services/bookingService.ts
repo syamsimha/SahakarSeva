@@ -137,6 +137,39 @@ class BookingService {
       paymentStatus: booking.paymentStatus === 'completed' ? 'paid' : 'unpaid',
     };
   }
+
+  async assignWorkerToBooking(
+    bookingId: string,
+    worker: {
+      id: string;
+      name: string;
+      primarySkill: string;
+      phone: string;
+      cooperativeName: string;
+    },
+    note?: string
+  ): Promise<Booking | null> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const booking = this.bookings.find((b) => b.id === bookingId);
+        if (!booking) return resolve(null);
+
+        booking.workerId = worker.id;
+        booking.workerName = worker.name;
+        booking.workerSkill = worker.primarySkill;
+        booking.workerPhone = worker.phone;
+        booking.cooperativeName = worker.cooperativeName;
+        booking.status = 'accepted';
+        booking.statusHistory.push({
+          status: 'accepted',
+          timestamp: new Date().toISOString(),
+          note: note || `Assigned to worker ${worker.name} by Administrative Dispatch`,
+        });
+
+        resolve({ ...booking });
+      }, 300);
+    });
+  }
 }
 
 export const bookingService = new BookingService();
