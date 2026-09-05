@@ -149,7 +149,7 @@ export const LocationSelectorModal: React.FC<LocationSelectorModalProps> = ({ vi
                   {currentLocation.address}
                 </Text>
                 <Text style={styles.currentCoordsText}>
-                  {currentLocation.latitude.toFixed(4)}° N, {currentLocation.longitude.toFixed(4)}° E • {currentLocation.city} {currentLocation.pincode}
+                  {(currentLocation.latitude ?? 0).toFixed(4)}° N, {(currentLocation.longitude ?? 0).toFixed(4)}° E • {currentLocation.city} {currentLocation.pincode}
                 </Text>
               </View>
             </View>
@@ -362,7 +362,7 @@ export const LocationSelectorModal: React.FC<LocationSelectorModalProps> = ({ vi
                           <Text style={styles.searchResultTitle}>{place.placeName}</Text>
                           <Text style={styles.searchResultAddress} numberOfLines={2}>{place.address}</Text>
                           <Text style={styles.searchResultCoords}>
-                            {place.latitude.toFixed(4)}° N, {place.longitude.toFixed(4)}° E • {place.city}
+                            {(place.latitude ?? 0).toFixed(4)}° N, {(place.longitude ?? 0).toFixed(4)}° E • {place.city}
                           </Text>
                         </View>
                         <Ionicons name="checkmark-circle-outline" size={20} color={colors.primary} />

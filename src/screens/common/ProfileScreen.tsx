@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
   View,
@@ -11,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header, LanguageModal, RoleSwitcherModal } from '../../components/common';
@@ -19,7 +21,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useLocation } from '../../context/LocationContext';
 import { pickProfileImage, ADMIN_AVATAR_PRESETS } from '../../utils';
-import { Ionicons } from '@expo/vector-icons';
+import { EditProfileModal, AddressManageModal } from '../../components/customer';
+import { Customer } from '../../types';
 
 interface ProfileScreenProps {
   onNavigateToHelp: () => void;
@@ -36,7 +39,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToBookings,
   onNavigateToForecast,
 }) => {
-  const { user, role, logout, updateUser } = useAuth();
+  const { user, role, logout, updateUser, updateCustomerProfile } = useAuth();
   const { language, t } = useLanguage();
   const { currentLocation, federationName, cooperativeAct, apexBankName, clusterName } = useLocation();
 
@@ -44,9 +47,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [langModalVisible, setLangModalVisible] = useState(false);
   const [roleModalVisible, setRoleModalVisible] = useState(false);
   const [editProfileVisible, setEditProfileVisible] = useState(false);
+  const [addressModalVisible, setAddressModalVisible] = useState(false);
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
   const [notificationModalVisible, setNotificationModalVisible] = useState(false);
-  const [logoutConfirmVisible, setLogoutConfirmVisible] = useState(false);
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Role-specific modals
   const [bankModalVisible, setBankModalVisible] = useState(false);
@@ -63,6 +68,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [editCity, setEditCity] = useState(user?.city || currentLocation.city || 'Visakhapatnam');
   const [editAvatarUrl, setEditAvatarUrl] = useState(user?.avatarUrl || '');
   const [isUploadingPic, setIsUploadingPic] = useState(false);
+
   // Admin-specific credentials (strictly controlled by RBAC)
   const [editDesignation, setEditDesignation] = useState(
     (user as any)?.adminDesignation || 'District Registrar & Operations Secretary'
@@ -131,7 +137,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       avatarUrl: editAvatarUrl || undefined,
     };
 
-    // Strict RBAC: only attach and update admin credentials if role is admin
     if (role === 'admin') {
       payload.adminDesignation = editDesignation.trim() || 'District Registrar & Operations Secretary';
       payload.federationName = editFederation.trim() || federationName;
@@ -140,7 +145,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       payload.role = 'admin';
     }
 
-    await updateUser(payload);
+    if (updateUser) {
+      await updateUser(payload);
+    } else if (updateCustomerProfile) {
+      await updateCustomerProfile(payload);
+    }
     setProfileSaveSuccess(true);
     setTimeout(() => {
       setEditProfileVisible(false);
@@ -148,12 +157,17 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     }, 800);
   };
 
-  const handleConfirmLogout = async () => {
-    setLogoutConfirmVisible(false);
+  const handleLogout = () => {
+    setLogoutModalVisible(true);
+  };
+
+  const confirmLogout = async () => {
+    setIsLoggingOut(true);
     try {
+      setLogoutModalVisible(false);
       await logout();
-    } catch (e) {
-      console.warn('Logout error:', e);
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
@@ -170,7 +184,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   return (
     <View style={styles.container}>
-      <Header title={t('nav_profile')} />
+      <Header title={t('profile_title') || t('nav_profile') || 'My Profile'} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Profile Card with Edit Action */}
@@ -209,21 +223,42 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </View>
         </View>
 
+        {/* Customer-Specific Shortcuts */}
+        {role === 'customer' && (
+          <View style={styles.menuGroup}>
+            <Text style={styles.menuGroupTitle}>Customer Account & Addresses</Text>
+            <TouchableOpacity onPress={() => setEditProfileVisible(true)} style={styles.menuItem}>
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
+              <Text style={styles.menuItemText}>Edit Profile Details</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setAddressModalVisible(true)} style={styles.menuItem}>
+              <Ionicons name="map-outline" size={20} color={colors.primary} />
+              <Text style={styles.menuItemText}>Manage Saved Addresses</Text>
+              <Text style={styles.menuItemValue}>
+                {(user as Customer)?.savedAddresses?.length || 0}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Experience Mode Switcher Banner (Hidden for Admin Dashboard) */}
         {role !== 'admin' && (
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={() => setRoleModalVisible(true)}
             style={styles.switchRoleBanner}
+            accessibilityLabel="Switch active application persona"
           >
             <View style={styles.switchRoleLeft}>
               <View style={styles.switchRoleIconBox}>
                 <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
               </View>
-              <View style={{ flex: 1, marginLeft: spacing.sm }}>
-                <Text style={styles.switchRoleTitle}>Switch Experience Mode</Text>
-                <Text style={styles.switchRoleSub}>
-                  Currently browsing as <Text style={{ fontWeight: '700', color: colors.primary }}>{getRoleBadgeLabel()}</Text>
+              <View style={{ flex: 1, paddingRight: spacing.sm }}>
+                <Text style={styles.switchRoleTitle}>Switch Application Persona</Text>
+                <Text style={styles.switchRoleSub} numberOfLines={2}>
+                  Active role: <Text style={{ fontWeight: '700', color: colors.primaryDark }}>{role.toUpperCase()}</Text>. Tap to test Customer, Worker, or Auditor views.
                 </Text>
               </View>
             </View>
@@ -325,7 +360,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
           <TouchableOpacity onPress={() => setLangModalVisible(true)} style={styles.menuItem}>
             <Ionicons name="language-outline" size={20} color={colors.textSecondary} />
-            <Text style={styles.menuItemText}>{t('language')}</Text>
+            <Text style={styles.menuItemText}>{t('language_setting') || t('language')} / भाषा</Text>
             <Text style={styles.menuItemValue}>{language.toUpperCase()}</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
@@ -351,9 +386,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
         {/* Sign Out Button */}
         <Button
-          title={t('logout')}
+          title={t('sign_out') || t('logout') || 'Sign Out'}
           icon="log-out-outline"
-          onPress={() => setLogoutConfirmVisible(true)}
+          onPress={() => setLogoutModalVisible(true)}
           variant="outline"
           size="md"
           fullWidth
@@ -372,12 +407,28 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       {/* 1. Language Modal */}
       <LanguageModal visible={langModalVisible} onClose={() => setLangModalVisible(false)} />
 
-      {/* 2. Role Switcher Modal (Non-admin only) */}
+      {/* 2. Customer Specific Modals */}
+      {role === 'customer' && (
+        <>
+          <EditProfileModal
+            visible={editProfileVisible}
+            customer={user as Customer}
+            onClose={() => setEditProfileVisible(false)}
+            onSave={(updates) => updateCustomerProfile ? updateCustomerProfile(updates) : updateUser(updates)}
+          />
+          <AddressManageModal
+            visible={addressModalVisible}
+            customer={user as Customer}
+            onClose={() => setAddressModalVisible(false)}
+            onUpdateAddresses={(savedAddresses) => updateCustomerProfile ? updateCustomerProfile({ savedAddresses }) : updateUser({ savedAddresses } as any)}
+          />
+        </>
+      )}
+
+      {/* 3. Role Switcher Modal (Non-admin only) */}
       {role !== 'admin' && (
         <RoleSwitcherModal visible={roleModalVisible} onClose={() => setRoleModalVisible(false)} />
       )}
-
-      {/* 3. Edit Profile Modal */}
       <Modal visible={editProfileVisible} transparent animationType="slide" onRequestClose={() => setEditProfileVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { maxHeight: '90%' }]}>
@@ -915,30 +966,38 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         </View>
       </Modal>
 
-      {/* 11. Sign Out Confirmation Modal */}
-      <Modal visible={logoutConfirmVisible} transparent animationType="fade" onRequestClose={() => setLogoutConfirmVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+      {/* Cross-platform Sign Out Modal */}
+      <Modal
+        visible={logoutModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLogoutModalVisible(false)}
+      >
+        <View style={styles.logoutModalBackdrop}>
+          <View style={styles.logoutModalCard}>
             <View style={styles.logoutIconBox}>
-              <Ionicons name="log-out-outline" size={32} color={colors.danger} />
+              <Ionicons name="log-out" size={28} color={colors.danger} />
             </View>
-            <Text style={styles.logoutConfirmTitle}>Sign Out of Sahakar Sathi?</Text>
-            <Text style={styles.logoutConfirmSub}>You can sign back in anytime with your registered credentials.</Text>
-
+            <Text style={styles.logoutModalTitle}>{t('sign_out') || 'Sign Out'}</Text>
+            <Text style={styles.logoutModalSubtitle}>
+              {t('sign_out_confirm') || 'Are you sure you want to log out of your cooperative account?'}
+            </Text>
             <View style={styles.logoutActions}>
               <Button
-                title="Cancel"
-                onPress={() => setLogoutConfirmVisible(false)}
+                title={t('cancel') || 'Cancel'}
                 variant="outline"
                 size="md"
-                style={{ flex: 1, marginRight: 6 }}
+                onPress={() => setLogoutModalVisible(false)}
+                style={{ flex: 1, marginRight: spacing.sm }}
+                disabled={isLoggingOut}
               />
               <Button
-                title="Sign Out"
-                onPress={handleConfirmLogout}
-                variant="primary"
+                title={isLoggingOut ? '...' : (t('sign_out') || 'Sign Out')}
+                variant="danger"
                 size="md"
-                style={{ flex: 1, marginLeft: 6, backgroundColor: colors.danger }}
+                loading={isLoggingOut}
+                onPress={confirmLogout}
+                style={{ flex: 1, marginLeft: spacing.sm }}
               />
             </View>
           </View>
@@ -1343,32 +1402,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 4,
   },
-  logoutIconBox: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: colors.dangerLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: spacing.sm,
-  },
-  logoutConfirmTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  logoutConfirmSub: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: spacing.lg,
-  },
-  logoutActions: {
-    flexDirection: 'row',
-  },
+
   avatarUploaderSection: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1487,5 +1521,49 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  logoutModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  logoutModalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  logoutIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.dangerLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  logoutModalTitle: {
+    ...typography.h3,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  logoutModalSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    lineHeight: 18,
+  },
+  logoutActions: {
+    flexDirection: 'row',
+    width: '100%',
   },
 });

@@ -1,6 +1,22 @@
+import { databaseService } from './db/databaseService';
+
+export type LocationMode = 'GPS' | 'MANUAL';
+
+export interface ManualAddressDetails {
+  houseFlat?: string;
+  flatBuilding?: string;
+  street?: string;
+  streetArea?: string;
+  area?: string;
+  landmark?: string;
+  city: string;
+  state?: string;
+  pincode: string;
+}
+
 export interface LocationCoords {
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   address: string;
   city: string;
   pincode: string;
@@ -8,6 +24,10 @@ export interface LocationCoords {
   area?: string;
   state?: string;
   isGPS?: boolean;
+  isGps?: boolean;
+  locationMode?: LocationMode;
+  manualDetails?: ManualAddressDetails;
+  coordinatesAvailable?: boolean;
 }
 
 export const defaultLocations: Record<string, LocationCoords> = {
@@ -21,6 +41,9 @@ export const defaultLocations: Record<string, LocationCoords> = {
     state: 'Andhra Pradesh',
     pincode: '530003',
     isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
   },
   hyderabad: {
     latitude: 17.4483,
@@ -32,6 +55,9 @@ export const defaultLocations: Record<string, LocationCoords> = {
     state: 'Telangana',
     pincode: '500081',
     isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
   },
   mumbai: {
     latitude: 19.076,
@@ -43,6 +69,9 @@ export const defaultLocations: Record<string, LocationCoords> = {
     state: 'Maharashtra',
     pincode: '400050',
     isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
   },
   delhi: {
     latitude: 28.6139,
@@ -54,6 +83,9 @@ export const defaultLocations: Record<string, LocationCoords> = {
     state: 'Delhi NCR',
     pincode: '110001',
     isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
   },
   chennai: {
     latitude: 13.0827,
@@ -65,6 +97,9 @@ export const defaultLocations: Record<string, LocationCoords> = {
     state: 'Tamil Nadu',
     pincode: '600017',
     isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
   },
   indiranagar: {
     latitude: 12.9784,
@@ -76,6 +111,9 @@ export const defaultLocations: Record<string, LocationCoords> = {
     state: 'Karnataka',
     pincode: '560038',
     isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
   },
   koramangala: {
     latitude: 12.9352,
@@ -87,6 +125,51 @@ export const defaultLocations: Record<string, LocationCoords> = {
     state: 'Karnataka',
     pincode: '560034',
     isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
+  },
+  whitefield: {
+    latitude: 12.9698,
+    longitude: 77.7500,
+    address: 'ITPL Main Road, Whitefield, Bengaluru',
+    placeName: 'Whitefield',
+    area: 'ITPL Main Road',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pincode: '560066',
+    isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
+  },
+  hsr: {
+    latitude: 12.9121,
+    longitude: 77.6446,
+    address: 'HSR Layout Sector 1, Bengaluru',
+    placeName: 'HSR Layout',
+    area: 'Sector 1',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pincode: '560102',
+    isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
+  },
+  malleshwaram: {
+    latitude: 13.0031,
+    longitude: 77.5643,
+    address: 'Sampige Road, Malleshwaram, Bengaluru',
+    placeName: 'Malleshwaram',
+    area: 'Sampige Road',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    pincode: '560003',
+    isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
   },
   pune: {
     latitude: 18.5204,
@@ -98,6 +181,9 @@ export const defaultLocations: Record<string, LocationCoords> = {
     state: 'Maharashtra',
     pincode: '411005',
     isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
   },
   kolkata: {
     latitude: 22.5726,
@@ -109,6 +195,9 @@ export const defaultLocations: Record<string, LocationCoords> = {
     state: 'West Bengal',
     pincode: '700091',
     isGPS: false,
+    isGps: false,
+    locationMode: 'MANUAL',
+    coordinatesAvailable: true,
   },
 };
 
@@ -141,12 +230,32 @@ export const getClusterName = (loc?: LocationCoords): string => {
   return `${loc.placeName || loc.city} Urban Cluster`;
 };
 
-type LocationListener = (loc: LocationCoords) => void;
+export type LocationListener = (loc: LocationCoords) => void;
 
 class LocationService {
-  private currentLocation: LocationCoords = { ...defaultLocations.visakhapatnam };
+  private currentLocation: LocationCoords;
   private listeners: Set<LocationListener> = new Set();
-  private customSavedPlaces: LocationCoords[] = [];
+
+  constructor() {
+    let initial: LocationCoords = { ...defaultLocations.visakhapatnam };
+    try {
+      const saved = databaseService.getActiveLocation();
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          parsed &&
+          ((typeof parsed.latitude === 'number' && typeof parsed.longitude === 'number') ||
+            parsed.locationMode === 'MANUAL' ||
+            parsed.address)
+        ) {
+          initial = parsed;
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    this.currentLocation = initial;
+  }
 
   subscribe(listener: LocationListener): () => void {
     this.listeners.add(listener);
@@ -173,12 +282,15 @@ class LocationService {
     if (defaultLocations[key as keyof typeof defaultLocations]) {
       this.currentLocation = { ...defaultLocations[key as keyof typeof defaultLocations] };
     }
+    databaseService.setActiveLocation(JSON.stringify(this.currentLocation));
     this.notify();
     return this.currentLocation;
   }
 
   async setCustomLocation(location: Partial<LocationCoords>): Promise<LocationCoords> {
     this.currentLocation = {
+      ...this.currentLocation,
+      ...location,
       latitude: location.latitude ?? this.currentLocation.latitude,
       longitude: location.longitude ?? this.currentLocation.longitude,
       address: location.address || this.currentLocation.address,
@@ -187,115 +299,295 @@ class LocationService {
       city: location.city || this.currentLocation.city,
       state: location.state || this.currentLocation.state,
       pincode: location.pincode || this.currentLocation.pincode,
-      isGPS: location.isGPS ?? false,
+      isGPS: location.isGPS ?? location.isGps ?? false,
+      isGps: location.isGps ?? location.isGPS ?? false,
+      locationMode: location.locationMode || this.currentLocation.locationMode || 'MANUAL',
+      coordinatesAvailable:
+        location.coordinatesAvailable ??
+        (location.latitude != null && location.longitude != null),
     };
+    databaseService.setActiveLocation(JSON.stringify(this.currentLocation));
     this.notify();
     return this.currentLocation;
   }
 
-  async modifyPlaceName(newPlaceName: string, newCity?: string, newAddress?: string, newState?: string): Promise<LocationCoords> {
+  async setManualLocation(input: {
+    houseFlat?: string;
+    flatBuilding?: string;
+    street?: string;
+    streetArea?: string;
+    area?: string;
+    city: string;
+    state?: string;
+    pincode: string;
+    latitude?: number;
+    longitude?: number;
+  }): Promise<LocationCoords> {
+    const streetPart = input.street || input.streetArea || '';
+    const housePart = input.houseFlat || input.flatBuilding || '';
+    const fullAddress = [housePart, streetPart, input.area, input.city, input.pincode]
+      .filter(Boolean)
+      .join(', ');
+
+    const hasValidCoords =
+      typeof input.latitude === 'number' &&
+      typeof input.longitude === 'number' &&
+      !isNaN(input.latitude) &&
+      !isNaN(input.longitude);
+
+    const manualCoords: LocationCoords = {
+      address: fullAddress,
+      city: input.city || 'Local Area',
+      pincode: input.pincode || '',
+      placeName: input.area || input.city,
+      area: input.area || streetPart,
+      state: input.state || '',
+      isGPS: false,
+      isGps: false,
+      locationMode: 'MANUAL',
+      coordinatesAvailable: hasValidCoords,
+      latitude: hasValidCoords ? input.latitude : undefined,
+      longitude: hasValidCoords ? input.longitude : undefined,
+      manualDetails: {
+        houseFlat: housePart,
+        flatBuilding: housePart,
+        street: streetPart,
+        streetArea: streetPart,
+        area: input.area,
+        city: input.city,
+        state: input.state,
+        pincode: input.pincode,
+      },
+    };
+
+    this.currentLocation = manualCoords;
+    databaseService.setActiveLocation(JSON.stringify(manualCoords));
+    this.notify();
+    return manualCoords;
+  }
+
+  async modifyPlaceName(
+    newPlaceName: string,
+    newCity?: string,
+    newAddress?: string,
+    newState?: string
+  ): Promise<LocationCoords> {
     this.currentLocation = {
       ...this.currentLocation,
       placeName: newPlaceName.trim(),
       city: newCity ? newCity.trim() : this.currentLocation.city,
       state: newState ? newState.trim() : this.currentLocation.state,
-      address: newAddress ? newAddress.trim() : `${newPlaceName.trim()}, ${newCity || this.currentLocation.city}`,
+      address: newAddress
+        ? newAddress.trim()
+        : `${newPlaceName.trim()}, ${newCity || this.currentLocation.city}`,
     };
+    databaseService.setActiveLocation(JSON.stringify(this.currentLocation));
     this.notify();
     return this.currentLocation;
   }
 
-  async detectLiveGPS(): Promise<LocationCoords> {
-    return new Promise((resolve, reject) => {
-      if (typeof navigator === 'undefined' || !navigator.geolocation) {
-        return reject(new Error('Geolocation is not supported by your device/browser.'));
+  async geocodeAddress(
+    addressQuery: string
+  ): Promise<{ latitude: number; longitude: number } | null> {
+    if (!addressQuery || !addressQuery.trim()) return null;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          addressQuery
+        )}&limit=1`,
+        {
+          headers: { 'User-Agent': 'SahakarSeva-Cooperative-App' },
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lon = parseFloat(data[0].lon);
+          if (!isNaN(lat) && !isNaN(lon)) {
+            return { latitude: lat, longitude: lon };
+          }
+        }
       }
+    } catch {
+      // Offline, network timeout, or geocoder unavailable
+    }
+    return null;
+  }
+
+  async detectLiveGPS(): Promise<LocationCoords> {
+    const res = await this.requestLiveGpsLocation();
+    if (res.success && res.coords) {
+      return res.coords;
+    }
+    throw new Error(res.error || 'Failed to acquire GPS location.');
+  }
+
+  async requestLiveGpsLocation(): Promise<{
+    success: boolean;
+    coords?: LocationCoords;
+    error?: string;
+    errorCode?: string;
+  }> {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      return {
+        success: false,
+        error: 'Geolocation is not supported by your device or browser.',
+        errorCode: 'UNSUPPORTED',
+      };
+    }
+
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        resolve({
+          success: false,
+          error:
+            'GPS request timed out. Please select location manually or verify browser location permissions.',
+          errorCode: 'TIMEOUT',
+        });
+      }, 12000);
 
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          const lat = position.coords.latitude;
-          const lon = position.coords.longitude;
+          clearTimeout(timeoutId);
+          const { latitude, longitude } = position.coords;
+          console.log('[GPS SUCCESS] Latitude:', latitude, 'Longitude:', longitude);
+
+          let address = `GPS Location (${latitude.toFixed(4)}°, ${longitude.toFixed(4)}°)`;
+          let city = 'Current Area';
+          let pincode = '';
+          let state = '';
+          let placeName = 'Detected Location';
+          let area = 'Local Area';
 
           try {
-            // Reverse Geocode using OpenStreetMap Nominatim
             const res = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`,
-              {
-                headers: {
-                  Accept: 'application/json',
-                },
-              }
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+              { headers: { 'User-Agent': 'SahakarSeva-Cooperative-App' } }
             );
-
             if (res.ok) {
               const data = await res.json();
-              const addr = data.address || {};
-
-              const road = addr.road || addr.street || '';
-              const neighbourhood = addr.neighbourhood || addr.suburb || addr.residential || '';
-              const city = addr.city || addr.town || addr.village || addr.county || 'Local Area';
-              const state = addr.state || '';
-              const pincode = addr.postcode || '';
-
-              const placePart = neighbourhood || road || city;
-              const placeName = placePart ? `${placePart}, ${city}` : city;
-
-              const fullAddress =
-                data.display_name ||
-                [road, neighbourhood, city, state, pincode].filter(Boolean).join(', ');
-
-              this.currentLocation = {
-                latitude: lat,
-                longitude: lon,
-                address: fullAddress,
-                placeName,
-                area: neighbourhood || road || placeName,
-                city,
-                state,
-                pincode,
-                isGPS: true,
-              };
-
-              this.notify();
-              return resolve(this.currentLocation);
+              if (data.display_name) {
+                address = data.display_name;
+              }
+              if (data.address) {
+                const addr = data.address;
+                const road = addr.road || addr.street || '';
+                const neighbourhood =
+                  addr.neighbourhood || addr.suburb || addr.residential || '';
+                city =
+                  addr.city ||
+                  addr.town ||
+                  addr.village ||
+                  addr.state_district ||
+                  'Current Area';
+                state = addr.state || '';
+                pincode = addr.postcode || '';
+                area = neighbourhood || road || city;
+                placeName = area ? `${area}, ${city}` : city;
+              }
             }
           } catch {
-            // Fallback if reverse geocode is slow / offline
+            // Offline fallback
           }
 
-          this.currentLocation = {
-            latitude: lat,
-            longitude: lon,
-            address: `Live GPS Location (${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E)`,
-            placeName: 'My GPS Location',
-            area: 'Current Location',
-            city: 'Detected Area',
-            state: '',
-            pincode: '',
+          const liveCoords: LocationCoords = {
+            latitude,
+            longitude,
+            address,
+            city,
+            state,
+            pincode,
+            placeName,
+            area,
             isGPS: true,
+            isGps: true,
+            locationMode: 'GPS',
+            coordinatesAvailable: true,
           };
 
+          this.currentLocation = liveCoords;
+          databaseService.setActiveLocation(JSON.stringify(liveCoords));
           this.notify();
-          resolve(this.currentLocation);
+          resolve({ success: true, coords: liveCoords });
         },
-        (error) => {
-          let errorMsg = 'Failed to acquire GPS location.';
-          if (error.code === 1) {
-            errorMsg = 'Location permission was denied. Please allow location permissions in your browser or device settings.';
-          } else if (error.code === 2) {
-            errorMsg = 'Position unavailable. Check if device GPS / location services are turned on.';
-          } else if (error.code === 3) {
-            errorMsg = 'Location request timed out. Please try again.';
+        (err) => {
+          clearTimeout(timeoutId);
+          console.warn('[GPS ERROR]', err.code, err.message);
+          let message = 'Failed to acquire GPS location.';
+          let code = 'UNKNOWN';
+
+          if (err.code === err.PERMISSION_DENIED) {
+            code = 'PERMISSION_DENIED';
+            message =
+              'GPS location permission denied. Enable browser location or enter your address manually.';
+          } else if (err.code === err.POSITION_UNAVAILABLE) {
+            code = 'POSITION_UNAVAILABLE';
+            message =
+              'Location signal is unavailable on your device. Please enter your address manually.';
+          } else if (err.code === err.TIMEOUT) {
+            code = 'TIMEOUT';
+            message =
+              'GPS location request timed out. Please check signal or enter your address manually.';
           }
-          reject(new Error(errorMsg));
+
+          resolve({ success: false, error: message, errorCode: code });
         },
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 10000,
-        }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     });
+  }
+
+  watchLiveGpsLocation(
+    onUpdate: (coords: LocationCoords) => void,
+    onError?: (error: string) => void
+  ): () => void {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      onError?.('Geolocation not supported');
+      return () => {};
+    }
+
+    try {
+      const watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          console.log('[GPS WATCH UPDATE] Latitude:', latitude, 'Longitude:', longitude);
+
+          const updated: LocationCoords = {
+            ...this.currentLocation,
+            latitude,
+            longitude,
+            isGPS: true,
+            isGps: true,
+            locationMode: 'GPS',
+            coordinatesAvailable: true,
+          };
+
+          this.currentLocation = updated;
+          databaseService.setActiveLocation(JSON.stringify(updated));
+          this.notify();
+          onUpdate(updated);
+        },
+        (err) => {
+          console.warn('[GPS WATCH ERROR]', err.message);
+          onError?.(err.message);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+      );
+
+      return () => {
+        navigator.geolocation.clearWatch(watchId);
+      };
+    } catch (e: any) {
+      console.warn('Failed to register watchPosition', e);
+      return () => {};
+    }
   }
 
   async searchPlaces(query: string): Promise<LocationCoords[]> {
@@ -305,10 +597,13 @@ class LocationService {
 
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=6&addressdetails=1`,
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(
+          query
+        )}&limit=6&addressdetails=1`,
         {
           headers: {
             Accept: 'application/json',
+            'User-Agent': 'SahakarSeva-Cooperative-App',
           },
         }
       );
@@ -318,12 +613,16 @@ class LocationService {
         return results.map((item: any) => {
           const addr = item.address || {};
           const road = addr.road || addr.street || '';
-          const neighbourhood = addr.neighbourhood || addr.suburb || addr.residential || '';
-          const city = addr.city || addr.town || addr.village || addr.county || item.name || '';
+          const neighbourhood =
+            addr.neighbourhood || addr.suburb || addr.residential || '';
+          const city =
+            addr.city || addr.town || addr.village || addr.county || item.name || '';
           const state = addr.state || '';
           const pincode = addr.postcode || '';
 
-          const placeName = neighbourhood ? `${neighbourhood}, ${city}` : item.name || city;
+          const placeName = neighbourhood
+            ? `${neighbourhood}, ${city}`
+            : item.name || city;
 
           return {
             latitude: parseFloat(item.lat),
@@ -335,6 +634,9 @@ class LocationService {
             state,
             pincode,
             isGPS: false,
+            isGps: false,
+            locationMode: 'MANUAL' as LocationMode,
+            coordinatesAvailable: true,
           };
         });
       }
@@ -352,7 +654,24 @@ class LocationService {
     return Object.values(defaultLocations);
   }
 
-  calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  calculateDistance(
+    lat1?: number,
+    lon1?: number,
+    lat2?: number,
+    lon2?: number
+  ): number {
+    if (
+      lat1 == null ||
+      lon1 == null ||
+      lat2 == null ||
+      lon2 == null ||
+      isNaN(lat1) ||
+      isNaN(lon1) ||
+      isNaN(lat2) ||
+      isNaN(lon2)
+    ) {
+      return 0;
+    }
     const R = 6371; // Earth's radius in km
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLon = ((lon2 - lon1) * Math.PI) / 180;

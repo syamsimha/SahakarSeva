@@ -44,7 +44,11 @@ export const BookingConfirmScreen: React.FC<BookingConfirmScreenProps> = ({
 
           <View style={styles.itemRow}>
             <Text style={styles.itemLabel}>Assigned Worker</Text>
-            <Text style={styles.itemValue}>{booking.workerName} ({booking.workerSkill})</Text>
+            <Text style={styles.itemValue}>
+              {booking.workerName
+                ? `${booking.workerName} (${booking.workerSkill || 'Cooperative Worker'})`
+                : 'Awaiting Cooperative Dispatch'}
+            </Text>
           </View>
 
           <View style={styles.itemRow}>

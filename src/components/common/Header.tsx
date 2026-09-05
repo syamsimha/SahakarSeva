@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { colors, borderRadius, spacing, typography } from '../../theme';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LanguageModal } from './LanguageModal';
@@ -37,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   avatarUrl,
   userName,
 }) => {
+  const { role } = useAuth();
   const { language, t } = useLanguage();
   const {
     currentLocation,
@@ -47,7 +49,29 @@ export const Header: React.FC<HeaderProps> = ({
   } = useLocation();
   const [langModalVisible, setLangModalVisible] = useState(false);
 
-  const displayLocation = locationName || currentLocation.placeName || currentLocation.city;
+  const displayLocation = locationName || currentLocation?.placeName || currentLocation?.city || 'Select Location';
+
+  const getRoleLabel = () => {
+    switch (role) {
+      case 'worker':
+        return t('worker');
+      case 'admin':
+        return t('admin');
+      default:
+        return t('customer');
+    }
+  };
+
+  const getRoleColor = () => {
+    switch (role) {
+      case 'worker':
+        return colors.workerBadge;
+      case 'admin':
+        return colors.adminBadge;
+      default:
+        return colors.customerBadge;
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -67,12 +91,12 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <View style={styles.locationHeaderRow}>
                 <Ionicons
-                  name={currentLocation.isGPS ? 'navigate' : 'location'}
+                  name={currentLocation?.isGPS ? 'navigate' : 'location'}
                   size={14}
-                  color={currentLocation.isGPS ? colors.success : colors.primary}
+                  color={currentLocation?.isGPS ? colors.success : colors.primary}
                 />
                 <Text style={styles.locationLabel}>
-                  {currentLocation.isGPS ? '🛰️ LIVE GPS' : t('current_location')}
+                  {currentLocation?.isGPS ? '🛰️ LIVE GPS' : (t('current_location') || t('location_current'))}
                 </Text>
                 {isLocating ? (
                   <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 3, transform: [{ scale: 0.6 }] }} />

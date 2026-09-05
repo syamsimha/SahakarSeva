@@ -5,6 +5,7 @@ import { Header } from '../../components/common';
 import { StatCard } from '../../components/cards';
 import { Button } from '../../components/ui';
 import { Ionicons } from '@expo/vector-icons';
+import { formatReadableDate } from '../../utils/dateTime';
 
 interface WorkerEarningsScreenProps {
   onBack?: () => void;
@@ -12,6 +13,12 @@ interface WorkerEarningsScreenProps {
 
 export const WorkerEarningsScreen: React.FC<WorkerEarningsScreenProps> = ({ onBack }) => {
   const [period, setPeriod] = useState<'week' | 'month'>('week');
+
+  const now = new Date();
+  const d3 = new Date(now);
+  d3.setDate(now.getDate() - 3);
+  const d5 = new Date(now);
+  d5.setDate(now.getDate() - 5);
 
   const transactions = [
     {
@@ -34,7 +41,7 @@ export const WorkerEarningsScreen: React.FC<WorkerEarningsScreenProps> = ({ onBa
     },
     {
       id: 'tx-103',
-      date: '28 Feb 2024',
+      date: formatReadableDate(d3),
       customer: 'Kavita Hegde',
       service: 'Ceiling Fan Installation',
       amount: 299,
@@ -43,7 +50,7 @@ export const WorkerEarningsScreen: React.FC<WorkerEarningsScreenProps> = ({ onBa
     },
     {
       id: 'tx-104',
-      date: '26 Feb 2024',
+      date: formatReadableDate(d5),
       customer: 'Priya Nambiar',
       service: 'Inverter Battery Setup',
       amount: 750,

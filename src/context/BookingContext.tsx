@@ -6,14 +6,26 @@ import React, {
   useCallback,
 } from 'react';
 
-import { Booking, BookingStatus, WorkerProfile } from '../types';
-import { bookingService, notificationService, workerService } from '../services';
+import {
+  Booking,
+  BookingStatus,
+  WorkerProfile,
+  ServiceCategoryKey,
+  ServiceLocation,
+} from '../types';
+import {
+  bookingService,
+  notificationService,
+  workerService,
+} from '../services';
 import { isTradeMatching, getWorkerActiveJob } from '../utils/workerMatching';
+import { useAuth } from './AuthContext';
+import { databaseService } from '../services/db/databaseService';
+import { locationService } from '../services/locationService';
 
 interface BookingContextType {
   bookings: Booking[];
   isLoading: boolean;
-
   createBooking: (
     data: Omit<
       Booking,
@@ -21,16 +33,33 @@ interface BookingContextType {
     >
   ) => Promise<Booking>;
 
+  dispatchPriorityBooking: (params: {
+    customerId: string;
+    customerName: string;
+    customerPhone: string;
+    categoryId: ServiceCategoryKey;
+    serviceTitle: string;
+    customerLocation: ServiceLocation;
+    instructions?: string;
+    estimatedAmount: number;
+    welfareCessAmount?: number;
+    paymentMethod?: 'upi' | 'card' | 'netbanking' | 'cash';
+  }) => Promise<{
+    success: boolean;
+    workerAssigned: boolean;
+    booking?: Booking;
+    error?: string;
+    message?: string;
+  }>;
+
   updateStatus: (
     bookingId: string,
     status: BookingStatus,
     note?: string
   ) => Promise<Booking | null>;
-
   acceptJob: (bookingId: string) => Promise<Booking | null>;
 
   rejectJob: (bookingId: string) => Promise<Booking | null>;
-
   rejectJobWithReason: (
     bookingId: string,
     reason: string
@@ -57,11 +86,17 @@ interface BookingContextType {
     comment: string
   ) => Promise<void>;
 
+  updateWorkerLocation: (
+    bookingId: string,
+    latitude: number,
+    longitude: number,
+    workerId?: string
+  ) => Promise<Booking | null>;
+
   assignJobToWorker: (
     bookingId: string,
     worker: WorkerProfile
   ) => Promise<Booking | null>;
-
   refreshBookings: () => Promise<void>;
 }
 
@@ -70,56 +105,129 @@ const BookingContext = createContext<BookingContextType>({
   isLoading: false,
 
   createBooking: async () => ({} as Booking),
-
+  dispatchPriorityBooking: async () => ({
+    success: false,
+    workerAssigned: false,
+    error: 'Not initialized',
+  }),
   updateStatus: async () => null,
-
   acceptJob: async () => null,
-
   rejectJob: async () => null,
-
   rejectJobWithReason: async () => null,
-
   cancelBooking: async () => null,
-
   generateCompletionOtp: () => null,
-
   verifyCompletionOtp: () => false,
-
-  rateBooking: async () => { },
-
+  rateBooking: async () => {},
+  updateWorkerLocation: async () => null,
   assignJobToWorker: async () => null,
-
-  refreshBookings: async () => { },
+  refreshBookings: async () => {},
 });
 
 export const BookingProvider: React.FC<{
   children: React.ReactNode;
 }> = ({ children }) => {
+  const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // --------------------------------------------------
-  // LOAD BOOKINGS
-  // --------------------------------------------------
-
-  const fetchAll = useCallback(async () => {
-    setIsLoading(true);
-
+  const fetchAll = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setIsLoading(true);
     try {
       const data = await bookingService.getBookings();
       setBookings(data);
     } finally {
-      setIsLoading(false);
+      if (showSpinner) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchAll();
+    fetchAll(true);
+
+    // Cross-tab broadcast listener (BroadcastChannel & storage event)
+    const unsubscribe = databaseService.onBroadcastUpdate(() => {
+      fetchAll(false);
+    });
+
+    // 4-second polling interval for multi-tab / real-time updates
+    const interval = setInterval(() => {
+      fetchAll(false);
+    }, 4000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, [fetchAll]);
 
-  // --------------------------------------------------
-  // CREATE BOOKING
-  // --------------------------------------------------
+  // Worker-side continuous real GPS streaming whenever worker has an active job
+  useEffect(() => {
+    if (user?.role !== 'worker') return;
+
+    const activeJobs = bookings.filter(
+      (b) =>
+        (b.status === 'on_the_way' || b.status === 'in_progress') &&
+        (!b.workerId || b.workerId === user.id)
+    );
+
+    if (activeJobs.length === 0) return;
+
+    let watchId: number | null = null;
+    let intervalId: any = null;
+
+    const reportCoords = (lat: number, lng: number) => {
+      activeJobs.forEach((job) => {
+        bookingService.updateWorkerLocation(job.id, lat, lng, user.id).then((updated) => {
+          if (updated) {
+            setBookings((prev) => prev.map((b) => (b.id === job.id ? updated : b)));
+          }
+        });
+      });
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          reportCoords(pos.coords.latitude, pos.coords.longitude);
+        },
+        (err) => {
+          console.warn('Worker GPS initial error:', err?.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          reportCoords(pos.coords.latitude, pos.coords.longitude);
+        },
+        (err) => {
+          console.warn('Worker GPS watch error:', err?.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      const fetchLoc = async () => {
+        try {
+          const loc = await locationService.getCurrentLocation();
+          if (loc && loc.latitude && loc.longitude) {
+            reportCoords(loc.latitude, loc.longitude);
+          }
+        } catch {
+          // ignore
+        }
+      };
+      fetchLoc();
+      intervalId = setInterval(fetchLoc, 8000);
+    }
+
+    return () => {
+      if (watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [bookings, user?.role, user?.id]);
 
   const createBooking = async (
     data: Omit<
@@ -132,6 +240,25 @@ export const BookingProvider: React.FC<{
     setBookings((prev) => [created, ...prev]);
 
     return created;
+  };
+
+  const dispatchPriorityBooking = async (params: {
+    customerId: string;
+    customerName: string;
+    customerPhone: string;
+    categoryId: ServiceCategoryKey;
+    serviceTitle: string;
+    customerLocation: ServiceLocation;
+    instructions?: string;
+    estimatedAmount: number;
+    welfareCessAmount?: number;
+    paymentMethod?: 'upi' | 'card' | 'netbanking' | 'cash';
+  }) => {
+    const result = await bookingService.dispatchPriorityBooking(params);
+    if (result.success && result.booking) {
+      setBookings((prev) => [result.booking!, ...prev]);
+    }
+    return result;
   };
 
   const updateStatus = async (bookingId: string, status: BookingStatus, note?: string) => {
@@ -209,6 +336,17 @@ export const BookingProvider: React.FC<{
       'Job declined by cooperative worker'
     );
   };
+
+  const updateWorkerLocation = async (bookingId: string, latitude: number, longitude: number, workerId?: string) => {
+    const updated = await bookingService.updateWorkerLocation(bookingId, latitude, longitude, workerId);
+    if (updated) {
+      setBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? updated : b))
+      );
+    }
+    return updated;
+  };
+
 
   // --------------------------------------------------
   // REJECT JOB WITH REASON
@@ -444,7 +582,7 @@ export const BookingProvider: React.FC<{
         isLoading,
 
         createBooking,
-
+        dispatchPriorityBooking,
         updateStatus,
 
         acceptJob,
@@ -460,9 +598,8 @@ export const BookingProvider: React.FC<{
         verifyCompletionOtp,
 
         rateBooking,
-
         assignJobToWorker,
-
+        updateWorkerLocation,
         refreshBookings: fetchAll,
       }}
     >

@@ -1,6 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, isSupabaseConfigured, getAppRedirectUrl } from '../lib/supabase';
 import { AppUser, UserRole, WorkerProfile, CooperativeAdmin, Customer } from '../types';
+import { mockCustomer, mockWorkerUser, mockAdminUser } from '../data';
+import { databaseService, storage } from './db/databaseService';
+
+const SESSION_INIT_KEY = 'sahakar_initial_auth_seeded';
+
 
 export interface RegisterPayload {
   email: string;
@@ -178,6 +183,7 @@ export const mapFriendlyAuthError = (err?: any): string => {
 
 class AuthService {
   private isRegistering = false;
+  private currentUser: AppUser | null = null;
 
   isConfigured(): boolean {
     return isSupabaseConfigured();
@@ -417,7 +423,22 @@ class AuthService {
    */
   async getCurrentUser(): Promise<AppUser | null> {
     if (!isSupabaseConfigured()) {
-      return null;
+      const saved = await databaseService.getSession();
+      if (saved) {
+        this.currentUser = saved;
+        return saved;
+      }
+
+      const hasInitialized = storage.getItem(SESSION_INIT_KEY);
+      if (hasInitialized) {
+        this.currentUser = null;
+        return null;
+      }
+
+      storage.setItem(SESSION_INIT_KEY, 'true');
+      this.currentUser = { ...mockCustomer };
+      await databaseService.setSession(this.currentUser);
+      return this.currentUser;
     }
 
     try {
@@ -427,6 +448,11 @@ class AuthService {
       } = await supabase.auth.getSession();
 
       if (error || !session?.user) {
+        const saved = await databaseService.getSession();
+        if (saved) {
+          this.currentUser = saved;
+          return saved;
+        }
         return null;
       }
 
@@ -442,9 +468,16 @@ class AuthService {
         return null;
       }
 
+      this.currentUser = profile;
+      await databaseService.setSession(profile);
       return profile;
     } catch (err) {
       console.error('Failed to get current user session:', err);
+      const saved = await databaseService.getSession();
+      if (saved) {
+        this.currentUser = saved;
+        return saved;
+      }
       return null;
     }
   }
@@ -592,7 +625,24 @@ class AuthService {
    */
   async login(roleToUse: UserRole, identifier?: string, password?: string): Promise<AppUser> {
     if (identifier && password) {
-      return this.loginWithPassword(identifier, password);
+      const user = await this.loginWithPassword(identifier, password);
+      this.currentUser = user;
+      await databaseService.setSession(user);
+      return user;
+    }
+    if (!isSupabaseConfigured()) {
+      storage.setItem(SESSION_INIT_KEY, 'true');
+      let user: AppUser;
+      if (roleToUse === 'worker') {
+        user = { ...mockWorkerUser };
+      } else if (roleToUse === 'admin') {
+        user = { ...mockAdminUser };
+      } else {
+        user = { ...mockCustomer };
+      }
+      this.currentUser = user;
+      await databaseService.setSession(user);
+      return user;
     }
     throw new Error('Please enter your email/mobile and password to sign in.');
   }
@@ -601,11 +651,17 @@ class AuthService {
    * Switches the active view role for an already authenticated user.
    */
   async switchRole(role: UserRole): Promise<AppUser> {
+    if (!isSupabaseConfigured()) {
+      return this.login(role);
+    }
     const current = await this.getCurrentUser();
     if (!current) {
       throw new Error('You must be signed in to switch experience mode.');
     }
-    return { ...current, role } as AppUser;
+    const updated = { ...current, role } as AppUser;
+    this.currentUser = updated;
+    await databaseService.setSession(updated);
+    return updated;
   }
 
   /**
@@ -1007,6 +1063,11 @@ class AuthService {
    * Sign out and clear stored sessions
    */
   async logout(): Promise<void> {
+    storage.setItem(SESSION_INIT_KEY, 'true');
+    this.currentUser = null;
+    await AsyncStorage.removeItem('sahakar_user').catch(() => {});
+    await AsyncStorage.removeItem('sahakar_role').catch(() => {});
+    await databaseService.clearSession();
     if (isSupabaseConfigured()) {
       try {
         await supabase.auth.signOut();
@@ -1014,6 +1075,49 @@ class AuthService {
         console.warn('Error during Supabase signout:', err);
       }
     }
+  }
+
+  async registerCustomer(data: Partial<AppUser>): Promise<AppUser> {
+    storage.setItem(SESSION_INIT_KEY, 'true');
+    const newUser: AppUser = {
+      ...mockCustomer,
+      ...data,
+      id: `cust-${Date.now()}`,
+      role: 'customer',
+    };
+    this.currentUser = newUser;
+    await databaseService.updateUser(newUser);
+    await databaseService.setSession(newUser);
+    return newUser;
+  }
+
+  async updateCustomerProfile(data: Partial<Customer>): Promise<Customer> {
+    if (!this.currentUser) {
+      throw new Error('No authenticated user to update');
+    }
+    const updated: Customer = {
+      ...(this.currentUser as Customer),
+      ...data,
+    };
+    this.currentUser = updated;
+    await databaseService.updateUser(updated);
+    await databaseService.setSession(updated);
+    return updated;
+  }
+
+  async registerWorker(data: Partial<AppUser>): Promise<AppUser> {
+    storage.setItem(SESSION_INIT_KEY, 'true');
+    const newWorker: AppUser = {
+      ...mockWorkerUser,
+      ...data,
+      id: `worker-${Date.now()}`,
+      role: 'worker',
+      verificationStatus: 'pending',
+    };
+    this.currentUser = newWorker;
+    await databaseService.updateUser(newWorker);
+    await databaseService.setSession(newWorker);
+    return newWorker;
   }
 }
 

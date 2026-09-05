@@ -1,30 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
   TextInput,
+  ActivityIndicator,
   Linking,
+  Platform,
+  Modal,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
 import { Button, Badge } from '../../components/ui';
-import { useLocation } from '../../context/LocationContext';
 import { Ionicons } from '@expo/vector-icons';
+import { useLanguage } from '../../context/LanguageContext';
+import { useLocation } from '../../context/LocationContext';
+import { useAuth } from '../../context/AuthContext';
+import { FAQS_DATA, FAQItem } from '../../data/faqs';
+import { databaseService } from '../../services/db/databaseService';
+import { SupportRequest, SupportCategory, Booking } from '../../types';
+import { formatDateTime } from '../../utils/dateTime';
+import { triggerPhoneCall } from '../../utils/phone';
 
 interface HelpSupportScreenProps {
+  initialBookingId?: string;
   onBack: () => void;
 }
 
-interface FaqItem {
-  id: string;
-  category: 'bookings' | 'payments' | 'workers' | 'cooperative';
-  q: string;
-  a: string;
-}
+type TabType = 'faqs' | 'ticket' | 'my_tickets';
+
+const CATEGORIES: Array<{ key: SupportCategory; langKey: any }> = [
+  { key: 'booking_issue', langKey: 'cat_booking_issue' },
+  { key: 'payment_dispute', langKey: 'cat_payment_dispute' },
+  { key: 'worker_conduct', langKey: 'cat_worker_conduct' },
+  { key: 'location_gps', langKey: 'cat_location_gps' },
+  { key: 'app_technical', langKey: 'cat_app_technical' },
+  { key: 'general_inquiry', langKey: 'cat_general_inquiry' },
+];
 
 interface GrievanceTicket {
   id: string;
@@ -36,80 +50,31 @@ interface GrievanceTicket {
   createdAt: string;
 }
 
-const FAQS_DATA: FaqItem[] = [
-  {
-    id: '1',
-    category: 'workers',
-    q: 'How does Sahakar Sathi verify and certify workers?',
-    a: 'Every worker must be an active member of a registered Labour Cooperative Society. Verification requires government Aadhaar biometric authentication, police clearance certificate, and trade competency certification from recognized ITI or state skill councils.',
-  },
-  {
-    id: '2',
-    category: 'cooperative',
-    q: 'What is the 5% Cooperative Welfare Cess on bills?',
-    a: 'Unlike commercial aggregators charging 20% to 30% corporate commissions, Sahakar Sathi is non-profit and worker-owned. A statutory 5% cess is deposited straight into the State Worker Welfare Fund for emergency health insurance (PMJJBY) and pension pools.',
-  },
-  {
-    id: '3',
-    category: 'bookings',
-    q: 'Can I reschedule or cancel a booking with zero penalty?',
-    a: 'Yes. You can reschedule or cancel with 100% full refund and zero penalty at any time before the cooperative technician marks their status as "On The Way". After that, a nominal ₹50 fuel transit allowance applies.',
-  },
-  {
-    id: '4',
-    category: 'payments',
-    q: 'How are worker payments settled and protected?',
-    a: 'Payments are settled directly via RBI-approved cooperative banking payment gateways (UPI, debit/credit cards, or post-service cash). 100% of the agreed service rate goes directly to the technician with zero hidden cuts.',
-  },
-  {
-    id: '5',
-    category: 'bookings',
-    q: 'What if a technician does not arrive on time?',
-    a: 'If a cooperative worker is delayed by more than 20 minutes without prior communication, our automated dispatch system alerts the nearest backup guild member. You also receive an automatic ₹100 credit on your booking bill.',
-  },
-  {
-    id: '6',
-    category: 'payments',
-    q: 'How fast are refunds processed if I cancel?',
-    a: 'Refunds for digital payments (UPI / Cards) are initiated immediately and credited back to your original source account within 2 to 4 hours via automated cooperative banking rails.',
-  },
-  {
-    id: '7',
-    category: 'workers',
-    q: 'Are workers covered under insurance during service?',
-    a: 'Yes. Every verified technician is protected under the Cooperative Group Accident Shield (up to ₹5,00,000) and third-party household property damage guarantee up to ₹25,000.',
-  },
-  {
-    id: '8',
-    category: 'cooperative',
-    q: 'What is the role of the Cooperative Ombudsman?',
-    a: 'The Ombudsman is an independent state judicial officer designated to resolve customer and worker disputes fairly without commercial bias. Decisions are legally binding under the State Cooperative Societies Act.',
-  },
-];
+export const HelpSupportScreen: React.FC<HelpSupportScreenProps> = ({
+  initialBookingId,
+  onBack,
+}) => {
+  const { t, language } = useLanguage();
+  const { user } = useAuth();
+  const { currentLocation } = useLocation();
 
-export const HelpSupportScreen: React.FC<HelpSupportScreenProps> = ({ onBack }) => {
-  const { currentLocation, federationName } = useLocation();
-  const [expandedFaqId, setExpandedFaqId] = useState<string | null>('1');
-  const [faqCategory, setFaqCategory] = useState<string>('all');
+  // Active Screen Tab
+  const [activeTab, setActiveTab] = useState<TabType>(initialBookingId ? 'ticket' : 'faqs');
+
+  // FAQ State
   const [searchQuery, setSearchQuery] = useState('');
+  const [faqCategory, setFaqCategory] = useState<string>('all');
+  const [expandedFaqId, setExpandedFaqId] = useState<string | null>('faq-1');
   const [faqFeedback, setFaqFeedback] = useState<Record<string, 'helpful' | 'not_helpful'>>({});
 
-  // Modals
+  // Modals & Helpline State
   const [helplineModalVisible, setHelplineModalVisible] = useState(false);
   const [activeCallVisible, setActiveCallVisible] = useState(false);
   const [callTimer, setCallTimer] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(true);
 
-  const [selectedTopic, setSelectedTopic] = useState<{
-    title: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    summary: string;
-    points: string[];
-    actionLabel: string;
-    onAction: () => void;
-  } | null>(null);
-
+  // Grievance State
   const [grievanceModalVisible, setGrievanceModalVisible] = useState(false);
   const [grievanceCategory, setGrievanceCategory] = useState('Service Quality');
   const [bookingRef, setBookingRef] = useState('');
@@ -117,354 +82,767 @@ export const HelpSupportScreen: React.FC<HelpSupportScreenProps> = ({ onBack }) 
   const [grievanceDesc, setGrievanceDesc] = useState('');
   const [grievanceSuccessMessage, setGrievanceSuccessMessage] = useState<string | null>(null);
 
-  const [tickets, setTickets] = useState<GrievanceTicket[]>([
-    {
-      id: '#COOP-GR-9921',
-      category: 'Billing Query',
-      bookingRef: 'SS-BK-1049',
-      description: 'Requesting clarification on the 5% cooperative welfare cess itemization.',
-      urgency: 'Normal',
-      status: 'Resolved',
-      createdAt: 'Yesterday, 4:20 PM',
-    },
-  ]);
+  // Ticket Form State
+  const [ticketCategory, setTicketCategory] = useState<SupportCategory>(
+    initialBookingId ? 'booking_issue' : 'general_inquiry'
+  );
+  const [selectedBookingId, setSelectedBookingId] = useState<string>(initialBookingId || '');
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+  const [customerName, setCustomerName] = useState(user?.name || '');
+  const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
+  const [customerEmail, setCustomerEmail] = useState(user?.email || '');
 
-  // Live Call Timer effect
+  // Customer Bookings for Dropdown
+  const [customerBookings, setCustomerBookings] = useState<Booking[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submittedTicket, setSubmittedTicket] = useState<SupportRequest | null>(null);
+
+  // My Tickets State
+  const [myTickets, setMyTickets] = useState<SupportRequest[]>([]);
+  const [isLoadingTickets, setIsLoadingTickets] = useState(false);
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
+
+  // Active Call Timer simulation
   useEffect(() => {
-    let interval: any;
+    let timer: any;
     if (activeCallVisible) {
-      interval = setInterval(() => {
+      timer = setInterval(() => {
         setCallTimer((prev) => prev + 1);
       }, 1000);
     } else {
       setCallTimer(0);
     }
-    return () => clearInterval(interval);
+    return () => clearInterval(timer);
   }, [activeCallVisible]);
 
-  const formatCallTime = (secs: number) => {
-    const mins = Math.floor(secs / 60);
-    const remaining = secs % 60;
-    return `${mins < 10 ? '0' : ''}${mins}:${remaining < 10 ? '0' : ''}${remaining}`;
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleOpenPhone = (phoneNumber: string) => {
-    Linking.openURL(`tel:${phoneNumber}`).catch(() => {
-      // Fallback to simulated call
-      setHelplineModalVisible(false);
-      setActiveCallVisible(true);
+  // Load customer bookings
+  useEffect(() => {
+    let isMounted = true;
+    const loadBookings = async () => {
+      try {
+        const all = await databaseService.getBookings();
+        if (!isMounted) return;
+        if (user?.id) {
+          const mine = all.filter((b) => b.customerId === user.id);
+          setCustomerBookings(mine);
+        } else {
+          setCustomerBookings(all.slice(0, 5));
+        }
+      } catch (err) {
+        console.warn('Failed to load bookings for support:', err);
+      }
+    };
+    loadBookings();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
+
+  // Load customer support tickets
+  const loadTickets = async () => {
+    setIsLoadingTickets(true);
+    try {
+      const tickets = await databaseService.getSupportRequests(user?.id);
+      setMyTickets(tickets);
+    } catch (err) {
+      console.warn('Failed to load support tickets:', err);
+    } finally {
+      setIsLoadingTickets(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTickets();
+  }, [user?.id]);
+
+  // Subscribe to real-time ticket updates
+  useEffect(() => {
+    const unsubscribe = databaseService.onBroadcastUpdate((event) => {
+      if (event?.type === 'SUPPORT_REQUEST_CREATED') {
+        loadTickets();
+      }
     });
+    return unsubscribe;
+  }, [user?.id]);
+
+  // Communication Handlers
+  const handleOpenPhone = (phoneNumber: string) => {
+    triggerPhoneCall(phoneNumber);
   };
 
   const handleOpenWhatsApp = () => {
-    Linking.openURL('https://wa.me/918007242527?text=Hello%20Sahakar%20Sathi%20Helpdesk%2C%20I%20need%20assistance.').catch(() => {});
+    Linking.openURL('https://wa.me/9118007242527?text=Hello%20Sahakar%20Sathi%20Support');
   };
 
   const handleOpenEmail = () => {
-    Linking.openURL('mailto:support@sahakarsathi.coop?subject=Support%20Request%20-%20Sahakar%20Sathi').catch(() => {});
+    Linking.openURL('mailto:support@sahakarsathi.coop?subject=Support%20Request%20-%20Sahakar%20Sathi');
+  };
+
+  const handleSimulatedHelplineCall = () => {
+    setHelplineModalVisible(false);
+    setActiveCallVisible(true);
   };
 
   const handleFileGrievance = () => {
     if (!grievanceDesc.trim()) return;
-    const newId = `#COOP-GR-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newTicket: GrievanceTicket = {
-      id: newId,
-      category: grievanceCategory,
-      bookingRef: bookingRef.trim() || 'General Inquiry',
-      description: grievanceDesc.trim(),
-      urgency: urgencyLevel,
-      status: 'Received',
-      createdAt: 'Just now',
-    };
-    setTickets([newTicket, ...tickets]);
+
+    const newId = `GRV-${Date.now().toString().slice(-6)}`;
     setGrievanceDesc('');
     setBookingRef('');
-    setGrievanceSuccessMessage(`Ticket ${newId} submitted. Cooperative Ombudsman will review within 24 hours.`);
+    setGrievanceSuccessMessage(
+      `Ticket ${newId} submitted. Cooperative Ombudsman will review within 24 hours under statutory SLA.`
+    );
   };
 
   // Filtered FAQs
-  const filteredFaqs = FAQS_DATA.filter((item) => {
-    const matchesCategory = faqCategory === 'all' || item.category === faqCategory;
-    const matchesQuery =
-      item.q.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.a.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesQuery;
-  });
+  const filteredFaqs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const lang = language === 'hi' || language === 'te' ? language : 'en';
+
+    return FAQS_DATA.filter((faq) => {
+      if (faqCategory !== 'all' && faq.category !== faqCategory) {
+        return false;
+      }
+      if (!q) return true;
+
+      const questionText = (faq.question[lang] || faq.question.en).toLowerCase();
+      const answerText = (faq.answer[lang] || faq.answer.en).toLowerCase();
+      const matchesText = questionText.includes(q) || answerText.includes(q);
+      const matchesTags = faq.tags.some((tag) => tag.toLowerCase().includes(q));
+      const enQuestion = faq.question.en.toLowerCase();
+      const enAnswer = faq.answer.en.toLowerCase();
+      const matchesEn = enQuestion.includes(q) || enAnswer.includes(q);
+
+      return matchesText || matchesTags || matchesEn;
+    });
+  }, [searchQuery, faqCategory, language]);
+
+  // Ticket Submission
+  const handleTicketSubmit = async () => {
+    const trimmedSubject = subject.trim();
+    const trimmedMessage = message.trim();
+
+    if (!trimmedSubject) {
+      setFormError('Please provide a subject for your issue.');
+      return;
+    }
+    if (!trimmedMessage) {
+      setFormError('Please provide details in the message box.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError(null);
+
+    try {
+      const linkedBooking = customerBookings.find((b) => b.id === selectedBookingId);
+
+      const created = await databaseService.createSupportRequest({
+        customerId: user?.id || 'guest',
+        customerName: customerName.trim() || user?.name || 'Customer',
+        customerPhone: customerPhone.trim() || user?.phone || '',
+        customerEmail: customerEmail.trim() || user?.email || '',
+        category: ticketCategory,
+        bookingId: selectedBookingId || undefined,
+        bookingCode: linkedBooking?.bookingCode,
+        subject: trimmedSubject,
+        message: trimmedMessage,
+      });
+
+      setSubmittedTicket(created);
+      setSubject('');
+      setMessage('');
+      setSelectedBookingId(initialBookingId || '');
+      loadTickets();
+    } catch (err: any) {
+      setFormError(err?.message || 'Failed to submit ticket. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const currentLang = language === 'hi' || language === 'te' ? language : 'en';
+  const federationName = currentLocation?.state
+    ? `${currentLocation.state} State Labour & Artisan Federation`
+    : 'National Apex Labour Cooperative Federation';
 
   return (
     <View style={styles.container}>
-      <Header title="Help & Support Desk" showBack onBack={onBack} />
+      <Header
+        title={t('help_support_title') || 'Help & Support'}
+        subtitle="24x7 Cooperative Assistance"
+        showBack
+        onBack={onBack}
+      />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Support Channels Hero */}
-        <View style={styles.heroCard}>
-          <View style={styles.heroLeft}>
-            <View style={styles.headsetIcon}>
-              <Ionicons name="headset" size={28} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1, marginLeft: spacing.md }}>
-              <Text style={styles.heroTitle}>24x7 Cooperative Helpdesk</Text>
-              <Text style={styles.heroSub}>Toll-free assistance in English, Hindi, Kannada & Telugu</Text>
-            </View>
-          </View>
-          <View style={styles.heroButtonsRow}>
-            <Button
-              title="Call Helpline"
-              icon="call"
-              onPress={() => setHelplineModalVisible(true)}
-              variant="primary"
-              size="sm"
-              style={{ flex: 1, marginRight: 6 }}
-            />
-            <Button
-              title="WhatsApp"
-              icon="logo-whatsapp"
-              onPress={handleOpenWhatsApp}
-              variant="outline"
-              size="sm"
-              style={{ flex: 1, marginLeft: 6, borderColor: colors.success }}
-              textStyle={{ color: colors.success }}
-            />
-          </View>
-        </View>
-
-        {/* Quick Help Topics */}
-        <Text style={styles.sectionTitle}>Help Topics</Text>
-        <View style={styles.topicsGrid}>
-          {[
-            {
-              title: 'Booking Help',
-              icon: 'calendar-outline' as const,
-              summary: 'Modify, track, or reschedule technician visits',
-              points: [
-                'Free rescheduling anytime before worker departs.',
-                'Real-time GPS tracking enabled once worker starts travel.',
-                'Direct OTP authentication ensures correct technician arrival.',
-                'Option to reassign worker if delayed beyond 20 minutes.',
-              ],
-              actionLabel: 'Call Dispatch Desk',
-              onAction: () => {
-                setSelectedTopic(null);
-                setHelplineModalVisible(true);
-              },
-            },
-            {
-              title: 'Payment Help',
-              icon: 'card-outline' as const,
-              summary: 'Pricing, welfare cess & instant refund assistance',
-              points: [
-                '100% transparent pricing with zero commercial markups.',
-                'Only 5% statutory welfare cess for worker healthcare fund.',
-                'Instant UPI refunds processed within 2 to 4 hours.',
-                'Official GST and cooperative tax invoices generated automatically.',
-              ],
-              actionLabel: 'View Cess Policy',
-              onAction: () => {
-                setSelectedTopic(null);
-                setExpandedFaqId('2');
-              },
-            },
-            {
-              title: 'Worker Support',
-              icon: 'construct-outline' as const,
-              summary: 'Member welfare, tools fund & guild standards',
-              points: [
-                'Standardized minimum wage guarantee for all registered trades.',
-                'Access to interest-free cooperative tool equipment loans.',
-                'Direct state labor board welfare registration assistance.',
-                'Free annual health checkup at empanelled cooperative hospitals.',
-              ],
-              actionLabel: 'Guild Welfare Inquiries',
-              onAction: () => {
-                setSelectedTopic(null);
-                setHelplineModalVisible(true);
-              },
-            },
-            {
-              title: 'Emergency SOS',
-              icon: 'flash-outline' as const,
-              summary: 'Immediate rapid intervention & grievance triage',
-              points: [
-                'Priority dispatch of cooperative supervisor within 15 minutes.',
-                'Direct escalation to Women Safety & Labor Vigilance Cell.',
-                'Third-party household accidental damage insurance coverage.',
-                'Police (112) and ambulance direct helpline links available 24/7.',
-              ],
-              actionLabel: 'Trigger Emergency Dispatch',
-              onAction: () => {
-                setSelectedTopic(null);
-                handleOpenPhone('112');
-              },
-            },
-          ].map((topic, i) => (
-            <TouchableOpacity
-              key={i}
-              activeOpacity={0.7}
-              onPress={() => setSelectedTopic(topic)}
-              style={styles.topicCard}
-            >
-              <View style={styles.topicIconCircle}>
-                <Ionicons name={topic.icon} size={22} color={colors.primary} />
-              </View>
-              <Text style={styles.topicTitle}>{topic.title}</Text>
-              <Text style={styles.topicSub} numberOfLines={1}>{topic.summary}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* FAQs Section */}
-        <View style={styles.faqSectionHeader}>
-          <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>
-          <Text style={styles.faqCountText}>{filteredFaqs.length} answers</Text>
-        </View>
-
-        {/* Search Bar */}
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={16} color={colors.textSecondary} />
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search questions, keywords (cess, refund...)"
-            placeholderTextColor={colors.textMuted}
-            style={styles.searchInput}
+      {/* Tabs Header */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'faqs' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('faqs')}
+        >
+          <Ionicons
+            name="help-circle-outline"
+            size={18}
+            color={activeTab === 'faqs' ? colors.primary : colors.textMuted}
           />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </View>
+          <Text
+            style={[
+              styles.tabButtonText,
+              activeTab === 'faqs' && styles.tabButtonTextActive,
+            ]}
+          >
+            {(t as any)('tab_faqs') || 'FAQs & Helpline'}
+          </Text>
+        </TouchableOpacity>
 
-        {/* Category Pills */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
-          {[
-            { id: 'all', label: 'All' },
-            { id: 'bookings', label: 'Bookings' },
-            { id: 'payments', label: 'Payments & Cess' },
-            { id: 'workers', label: 'Verification' },
-            { id: 'cooperative', label: 'Cooperative Model' },
-          ].map((cat) => {
-            const isSelected = faqCategory === cat.id;
-            return (
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'ticket' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('ticket')}
+        >
+          <Ionicons
+            name="create-outline"
+            size={18}
+            color={activeTab === 'ticket' ? colors.primary : colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.tabButtonText,
+              activeTab === 'ticket' && styles.tabButtonTextActive,
+            ]}
+          >
+            {(t as any)('tab_raise_ticket') || 'Raise Ticket'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'my_tickets' && styles.tabButtonActive]}
+          onPress={() => {
+            setActiveTab('my_tickets');
+            loadTickets();
+          }}
+        >
+          <Ionicons
+            name="ticket-outline"
+            size={18}
+            color={activeTab === 'my_tickets' ? colors.primary : colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.tabButtonText,
+              activeTab === 'my_tickets' && styles.tabButtonTextActive,
+            ]}
+          >
+            {(t as any)('tab_my_tickets') || 'My Tickets'}
+            {myTickets.length > 0 && ` (${myTickets.length})`}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ================= TAB 1: FAQS & HELPLINE ================= */}
+        {activeTab === 'faqs' && (
+          <View>
+            {/* Rapid Emergency Assistance */}
+            <View style={styles.emergencyBanner}>
+              <View style={styles.emergencyIconBox}>
+                <Ionicons name="warning" size={24} color={colors.textInverse} />
+              </View>
+              <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                <Text style={styles.emergencyTitle}>Immediate Emergency Help</Text>
+                <Text style={styles.emergencySub}>For site safety, physical emergencies, or electrical hazards</Text>
+              </View>
               <TouchableOpacity
-                key={cat.id}
-                onPress={() => setFaqCategory(cat.id)}
-                style={[styles.catPill, isSelected && styles.catPillActive]}
+                onPress={() => handleOpenPhone('112')}
+                style={styles.emergencyBtn}
               >
-                <Text style={[styles.catPillText, isSelected && styles.catPillTextActive]}>
-                  {cat.label}
-                </Text>
+                <Ionicons name="call" size={14} color={colors.textInverse} />
+                <Text style={styles.emergencyBtnText}>Call 112</Text>
               </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* FAQ Accordion List */}
-        <View style={styles.faqsList}>
-          {filteredFaqs.length === 0 ? (
-            <View style={styles.emptyFaq}>
-              <Ionicons name="help-circle-outline" size={32} color={colors.textMuted} />
-              <Text style={styles.emptyFaqTitle}>No matching answers found</Text>
-              <Text style={styles.emptyFaqSub}>Try another search query or ask our helpdesk directly.</Text>
             </View>
-          ) : (
-            filteredFaqs.map((faq) => {
-              const isExpanded = expandedFaqId === faq.id;
-              const feedback = faqFeedback[faq.id];
-              return (
-                <View key={faq.id} style={[styles.faqCard, isExpanded && styles.faqCardExpanded]}>
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => setExpandedFaqId(isExpanded ? null : faq.id)}
-                    style={styles.faqTop}
-                  >
-                    <Text style={styles.faqQuestion}>{faq.q}</Text>
-                    <Ionicons
-                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={18}
-                      color={isExpanded ? colors.primary : colors.textSecondary}
-                    />
-                  </TouchableOpacity>
 
-                  {isExpanded && (
-                    <View style={styles.faqBody}>
-                      <Text style={styles.faqAnswer}>{faq.a}</Text>
-                      <View style={styles.feedbackRow}>
-                        <Text style={styles.feedbackPrompt}>Was this answer helpful?</Text>
-                        {feedback ? (
-                          <Text style={styles.feedbackThanks}>✓ Thank you for your feedback</Text>
-                        ) : (
-                          <View style={styles.feedbackButtons}>
-                            <TouchableOpacity
-                              onPress={() => setFaqFeedback((prev) => ({ ...prev, [faq.id]: 'helpful' }))}
-                              style={styles.feedbackBtn}
+            {/* Helpline Fast Action Banner */}
+            <View style={styles.helplineBanner}>
+              <View style={styles.headsetIcon}>
+                <Ionicons name="headset" size={26} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1, marginLeft: spacing.md }}>
+                <Text style={styles.heroTitle}>24x7 Cooperative Helpline</Text>
+                <Text style={styles.heroSub}>Toll-Free Government Certified Support</Text>
+                <View style={styles.heroButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.heroCallBtn}
+                    onPress={handleSimulatedHelplineCall}
+                  >
+                    <Ionicons name="call" size={14} color={colors.textInverse} />
+                    <Text style={styles.heroCallBtnText}>1800-724-2527</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.heroOptionsBtn}
+                    onPress={() => setHelplineModalVisible(true)}
+                  >
+                    <Ionicons name="options-outline" size={14} color={colors.primary} />
+                    <Text style={styles.heroOptionsBtnText}>More Options</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* Search Bar */}
+            <View style={styles.searchBox}>
+              <Ionicons name="search" size={18} color={colors.textSecondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder={(t as any)('search_faq_placeholder') || 'Search FAQs, payments, guarantees, booking rules...'}
+                placeholderTextColor={colors.textSecondary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Category Filter Chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
+              <View style={styles.chipsRow}>
+                {[
+                  { key: 'all', label: 'All Topics' },
+                  { key: 'bookings', label: 'Bookings' },
+                  { key: 'payments', label: 'Payments & Rates' },
+                  { key: 'workers', label: 'Worker Verification' },
+                  { key: 'safety', label: 'Safety & Trust' },
+                  { key: 'welfare', label: 'Welfare & Guild' },
+                ].map((cat) => (
+                  <TouchableOpacity
+                    key={cat.key}
+                    onPress={() => setFaqCategory(cat.key)}
+                    style={[styles.chip, faqCategory === cat.key && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipText, faqCategory === cat.key && styles.chipTextActive]}>
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* FAQs Accordion */}
+            <Text style={styles.sectionTitle}>Frequently Asked Questions ({filteredFaqs.length})</Text>
+            {filteredFaqs.length === 0 ? (
+              <View style={styles.noFaqsBox}>
+                <Ionicons name="help-circle-outline" size={36} color={colors.textMuted} />
+                <Text style={styles.noFaqsTitle}>No matching FAQs found</Text>
+                <Text style={styles.noFaqsSub}>Try searching with different keywords or raise a direct support ticket.</Text>
+                <TouchableOpacity style={styles.inlineRaiseBtn} onPress={() => setActiveTab('ticket')}>
+                  <Text style={styles.inlineRaiseBtnText}>Raise a Support Ticket</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              filteredFaqs.map((faq) => {
+                const isExpanded = expandedFaqId === faq.id;
+                const qText = faq.question[currentLang] || faq.question.en;
+                const aText = faq.answer[currentLang] || faq.answer.en;
+
+                return (
+                  <View key={faq.id} style={styles.faqCard}>
+                    <TouchableOpacity
+                      style={styles.faqHeader}
+                      onPress={() => setExpandedFaqId(isExpanded ? null : faq.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.faqTitleRow}>
+                        <View style={styles.faqDot} />
+                        <Text style={styles.faqQuestion}>{qText}</Text>
+                      </View>
+                      <Ionicons
+                        name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={18}
+                        color={colors.primary}
+                      />
+                    </TouchableOpacity>
+
+                    {isExpanded && (
+                      <View style={styles.faqBody}>
+                        <Text style={styles.faqAnswer}>{aText}</Text>
+
+                        {/* Helpful / Not Helpful Feedback */}
+                        <View style={styles.faqFeedbackRow}>
+                          <Text style={styles.faqFeedbackLabel}>Was this helpful?</Text>
+                          <TouchableOpacity
+                            style={[
+                              styles.feedbackBtn,
+                              faqFeedback[faq.id] === 'helpful' && styles.feedbackBtnSelected,
+                            ]}
+                            onPress={() =>
+                              setFaqFeedback((prev) => ({ ...prev, [faq.id]: 'helpful' }))
+                            }
+                          >
+                            <Ionicons
+                              name="thumbs-up-outline"
+                              size={12}
+                              color={
+                                faqFeedback[faq.id] === 'helpful' ? colors.primary : colors.textSecondary
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.feedbackBtnText,
+                                faqFeedback[faq.id] === 'helpful' && styles.feedbackBtnTextSelected,
+                              ]}
                             >
-                              <Ionicons name="thumbs-up-outline" size={14} color={colors.primary} />
-                              <Text style={styles.feedbackBtnText}>Yes</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => setFaqFeedback((prev) => ({ ...prev, [faq.id]: 'not_helpful' }))}
-                              style={styles.feedbackBtn}
+                              Yes
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.feedbackBtn,
+                              faqFeedback[faq.id] === 'not_helpful' && styles.feedbackBtnSelected,
+                            ]}
+                            onPress={() =>
+                              setFaqFeedback((prev) => ({ ...prev, [faq.id]: 'not_helpful' }))
+                            }
+                          >
+                            <Ionicons
+                              name="thumbs-down-outline"
+                              size={12}
+                              color={
+                                faqFeedback[faq.id] === 'not_helpful' ? colors.primary : colors.textSecondary
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.feedbackBtnText,
+                                faqFeedback[faq.id] === 'not_helpful' && styles.feedbackBtnTextSelected,
+                              ]}
                             >
-                              <Ionicons name="thumbs-down-outline" size={14} color={colors.textMuted} />
-                              <Text style={styles.feedbackBtnText}>No</Text>
+                              No
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              })
+            )}
+
+            {/* Grievance Redressal Banner */}
+            <TouchableOpacity
+              onPress={() => {
+                setGrievanceSuccessMessage(null);
+                setGrievanceModalVisible(true);
+              }}
+              style={styles.reportBanner}
+            >
+              <View style={styles.reportIconBox}>
+                <Ionicons name="shield-half" size={24} color={colors.danger} />
+              </View>
+              <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                <Text style={styles.reportTitle}>File a Cooperative Grievance</Text>
+                <Text style={styles.reportSub}>Independent Ombudsman arbitration tribunal with 24-hr statutory SLA</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.danger} />
+            </TouchableOpacity>
+
+            {/* Local Cooperative Society Chapter Card */}
+            <View style={styles.chapterCard}>
+              <View style={styles.chapterHeader}>
+                <Ionicons name="business" size={20} color={colors.primary} />
+                <Text style={styles.chapterTitle}>Local Cooperative Society Chapter</Text>
+              </View>
+              <Text style={styles.chapterAddress}>
+                {federationName} (Regional Operations){
+}
+                Cooperative Bhavan, {currentLocation?.placeName || currentLocation?.city || 'Regional Center'}, {currentLocation?.state || ''}
+              </Text>
+              <View style={styles.chapterDetailsRow}>
+                <TouchableOpacity onPress={() => handleOpenPhone('+918023456789')} style={styles.chapterLink}>
+                  <Ionicons name="call-outline" size={14} color={colors.primary} />
+                  <Text style={styles.chapterLinkText}>+91 80 2345 6789</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleOpenEmail} style={styles.chapterLink}>
+                  <Ionicons name="mail-outline" size={14} color={colors.primary} />
+                  <Text style={styles.chapterLinkText}>support@sahakarsathi.coop</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.chapterHours}>Hours: Monday – Saturday, 09:00 AM – 06:00 PM IST</Text>
+            </View>
+          </View>
+        )}
+
+        {/* ================= TAB 2: RAISE TICKET ================= */}
+        {activeTab === 'ticket' && (
+          <View style={styles.ticketTabContainer}>
+            {submittedTicket ? (
+              <View style={styles.successTicketBox}>
+                <View style={styles.successIconCircle}>
+                  <Ionicons name="checkmark-done" size={36} color={colors.success} />
+                </View>
+                <Text style={styles.successTitle}>Support Ticket Created!</Text>
+                <Text style={styles.successCode}>Ticket ID: {submittedTicket.ticketCode || submittedTicket.id}</Text>
+                <Text style={styles.successDesc}>
+                  Our cooperative customer service team has received your ticket and will follow up within 2 hours.
+                </Text>
+                <View style={styles.successActionsRow}>
+                  <Button
+                    title="View My Tickets"
+                    onPress={() => {
+                      setSubmittedTicket(null);
+                      setActiveTab('my_tickets');
+                      loadTickets();
+                    }}
+                    style={{ flex: 1, marginRight: spacing.xs }}
+                  />
+                  <Button
+                    title="Raise Another"
+                    variant="outline"
+                    onPress={() => setSubmittedTicket(null)}
+                    style={{ flex: 1, marginLeft: spacing.xs }}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={styles.ticketForm}>
+                <Text style={styles.formTitle}>Submit a Customer Care Request</Text>
+                <Text style={styles.formSub}>
+                  Logged issues are assigned directly to cooperative nodal officers for quick resolution.
+                </Text>
+
+                {formError && (
+                  <View style={styles.errorAlert}>
+                    <Ionicons name="alert-circle" size={16} color={colors.danger} />
+                    <Text style={styles.errorAlertText}>{formError}</Text>
+                  </View>
+                )}
+
+                {/* Category Selection */}
+                <Text style={styles.inputLabel}>Issue Category *</Text>
+                <View style={styles.categoryGrid}>
+                  {CATEGORIES.map((cat) => {
+                    const isSelected = ticketCategory === cat.key;
+                    return (
+                      <TouchableOpacity
+                        key={cat.key}
+                        style={[
+                          styles.categoryCard,
+                          isSelected && styles.categoryCardSelected,
+                        ]}
+                        onPress={() => setTicketCategory(cat.key)}
+                      >
+                        <Ionicons
+                          name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                          size={16}
+                          color={isSelected ? colors.primary : colors.textMuted}
+                        />
+                        <Text
+                          style={[
+                            styles.categoryCardText,
+                            isSelected && styles.categoryCardTextSelected,
+                          ]}
+                        >
+                          {t(cat.langKey) || cat.key.replace('_', ' ')}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Optional Linked Booking */}
+                {customerBookings.length > 0 && (
+                  <View style={styles.fieldContainer}>
+                    <Text style={styles.inputLabel}>Linked Booking (Optional)</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          style={[
+                            styles.bookingChip,
+                            !selectedBookingId && styles.bookingChipSelected,
+                          ]}
+                          onPress={() => setSelectedBookingId('')}
+                        >
+                          <Text style={[styles.bookingChipText, !selectedBookingId && styles.bookingChipTextSelected]}>
+                            None
+                          </Text>
+                        </TouchableOpacity>
+                        {customerBookings.map((b) => {
+                          const isSel = selectedBookingId === b.id;
+                          return (
+                            <TouchableOpacity
+                              key={b.id}
+                              style={[styles.bookingChip, isSel && styles.bookingChipSelected]}
+                              onPress={() => setSelectedBookingId(b.id)}
+                            >
+                              <Text style={[styles.bookingChipText, isSel && styles.bookingChipTextSelected]}>
+                                #{b.bookingCode || b.id.slice(-6)} - {b.serviceTitle}
+                              </Text>
                             </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Subject */}
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.inputLabel}>Subject *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Brief summary of the issue"
+                    placeholderTextColor={colors.textSecondary}
+                    value={subject}
+                    onChangeText={setSubject}
+                  />
+                </View>
+
+                {/* Message */}
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.inputLabel}>Description / Message *</Text>
+                  <TextInput
+                    style={[styles.textInput, styles.textArea]}
+                    placeholder="Describe what happened with clear details..."
+                    placeholderTextColor={colors.textSecondary}
+                    value={message}
+                    onChangeText={setMessage}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                </View>
+
+                {/* Contact Phone */}
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.inputLabel}>Callback Phone Number</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Phone number for updates"
+                    placeholderTextColor={colors.textSecondary}
+                    value={customerPhone}
+                    onChangeText={setCustomerPhone}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+
+                <Button
+                  title={isSubmitting ? 'Submitting Ticket...' : 'Submit Support Request'}
+                  onPress={handleTicketSubmit}
+                  disabled={isSubmitting}
+                  style={{ marginTop: spacing.md }}
+                />
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ================= TAB 3: MY TICKETS ================= */}
+        {activeTab === 'my_tickets' && (
+          <View style={styles.myTicketsContainer}>
+            <View style={styles.myTicketsHeader}>
+              <Text style={styles.sectionTitle}>Your Support Tickets ({myTickets.length})</Text>
+              <TouchableOpacity onPress={loadTickets} style={styles.refreshBtn}>
+                <Ionicons name="refresh" size={16} color={colors.primary} />
+                <Text style={styles.refreshBtnText}>Refresh</Text>
+              </TouchableOpacity>
+            </View>
+
+            {isLoadingTickets ? (
+              <View style={{ padding: spacing.xxl, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ marginTop: spacing.sm, color: colors.textSecondary }}>Loading tickets...</Text>
+              </View>
+            ) : myTickets.length === 0 ? (
+              <View style={styles.emptyTicketsBox}>
+                <Ionicons name="ticket-outline" size={48} color={colors.textMuted} />
+                <Text style={styles.emptyTicketsTitle}>No Support Tickets</Text>
+                <Text style={styles.emptyTicketsSub}>You have not submitted any customer support requests yet.</Text>
+                <Button
+                  title="Raise a Support Ticket"
+                  onPress={() => setActiveTab('ticket')}
+                  style={{ marginTop: spacing.md }}
+                />
+              </View>
+            ) : (
+              myTickets.map((ticket) => {
+                const isExpanded = expandedTicketId === ticket.id;
+                const statusColor =
+                  ticket.status === 'RESOLVED'
+                    ? colors.success
+                    : ticket.status === 'IN_PROGRESS'
+                    ? colors.warning
+                    : colors.info || colors.primary;
+
+                return (
+                  <View key={ticket.id} style={styles.ticketCard}>
+                    <TouchableOpacity
+                      style={styles.ticketHeader}
+                      onPress={() => setExpandedTicketId(isExpanded ? null : ticket.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.ticketCode}>#{ticket.ticketCode || ticket.id.slice(-6)}</Text>
+                          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
+                            <Text style={[styles.statusBadgeText, { color: statusColor }]}>
+                              {ticket.status.toUpperCase()}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.ticketSubject}>{ticket.subject}</Text>
+                        <Text style={styles.ticketDate}>
+                          {ticket.createdAt ? formatDateTime(ticket.createdAt) : 'Recently'}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={18}
+                        color={colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+
+                    {isExpanded && (
+                      <View style={styles.ticketDetailsBody}>
+                        <Text style={styles.ticketMessageLabel}>Your Message:</Text>
+                        <Text style={styles.ticketMessageText}>{ticket.message}</Text>
+
+                        {(ticket as any).resolutionNotes && (
+                          <View style={styles.resolutionBox}>
+                            <Text style={styles.resolutionTitle}>Resolution Notes:</Text>
+                            <Text style={styles.resolutionText}>{(ticket as any).resolutionNotes}</Text>
                           </View>
                         )}
                       </View>
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          )}
-        </View>
-
-        {/* Report an Issue / Dispute Banner */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => {
-            setGrievanceSuccessMessage(null);
-            setGrievanceModalVisible(true);
-          }}
-          style={styles.reportBanner}
-        >
-          <View style={styles.reportIconBox}>
-            <Ionicons name="shield-half" size={24} color={colors.danger} />
+                    )}
+                  </View>
+                );
+              })
+            )}
           </View>
-          <View style={{ flex: 1, marginLeft: spacing.sm }}>
-            <Text style={styles.reportTitle}>File a Cooperative Grievance</Text>
-            <Text style={styles.reportSub}>Independent Ombudsman arbitration tribunal with 24-hr statutory SLA</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.danger} />
-        </TouchableOpacity>
-
-        {/* Local Cooperative Society Chapter Card */}
-        <View style={styles.chapterCard}>
-          <View style={styles.chapterHeader}>
-            <Ionicons name="business" size={20} color={colors.primary} />
-            <Text style={styles.chapterTitle}>Local Cooperative Society Chapter</Text>
-          </View>
-          <Text style={styles.chapterAddress}>
-            {federationName} (Regional Operations){'\n'}
-            Cooperative Bhavan, {currentLocation.placeName || currentLocation.city}, {currentLocation.state || ''} - {currentLocation.pincode || '530003'}
-          </Text>
-          <View style={styles.chapterDetailsRow}>
-            <TouchableOpacity onPress={() => handleOpenPhone('+918023456789')} style={styles.chapterLink}>
-              <Ionicons name="call-outline" size={14} color={colors.primary} />
-              <Text style={styles.chapterLinkText}>+91 80 2345 6789</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleOpenEmail} style={styles.chapterLink}>
-              <Ionicons name="mail-outline" size={14} color={colors.primary} />
-              <Text style={styles.chapterLinkText}>support@sahakarsathi.coop</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.chapterHours}>Hours: Monday – Saturday, 09:00 AM – 06:00 PM IST</Text>
-        </View>
+        )}
       </ScrollView>
 
-      {/* 1. Helpline Modal */}
-      <Modal visible={helplineModalVisible} transparent animationType="fade" onRequestClose={() => setHelplineModalVisible(false)}>
+      {/* 1. Helpline Channels Modal */}
+      <Modal
+        visible={helplineModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setHelplineModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -488,11 +866,11 @@ export const HelpSupportScreen: React.FC<HelpSupportScreenProps> = ({ onBack }) 
                 <View style={[styles.channelIcon, { backgroundColor: colors.primaryLight }]}>
                   <Ionicons name="call" size={22} color={colors.primary} />
                 </View>
-                <View style={{ flex: 1, marginLeft: spacing.md }}>
-                  <Text style={styles.channelTitle}>Toll-Free Helpline (National)</Text>
-                  <Text style={styles.channelDesc}>1800-SAHAKAR (1800-724-2527) • Zero Call Charges</Text>
+                <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                  <Text style={styles.channelName}>Toll-Free Phone</Text>
+                  <Text style={styles.channelDetail}>1800-724-2527 (Toll-Free 24x7)</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -502,146 +880,96 @@ export const HelpSupportScreen: React.FC<HelpSupportScreenProps> = ({ onBack }) 
                   handleOpenWhatsApp();
                 }}
               >
-                <View style={[styles.channelIcon, { backgroundColor: '#DCF8C6' }]}>
-                  <Ionicons name="logo-whatsapp" size={22} color="#075E54" />
+                <View style={[styles.channelIcon, { backgroundColor: '#E8F8EE' }]}>
+                  <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
                 </View>
-                <View style={{ flex: 1, marginLeft: spacing.md }}>
-                  <Text style={styles.channelTitle}>WhatsApp Support Desk</Text>
-                  <Text style={styles.channelDesc}>Chat with live cooperative officer • Quick resolution</Text>
+                <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                  <Text style={styles.channelName}>WhatsApp Cooperative Desk</Text>
+                  <Text style={styles.channelDetail}>Instant chat & document sharing</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.channelItem}
                 onPress={() => {
                   setHelplineModalVisible(false);
-                  setActiveCallVisible(true);
+                  handleOpenEmail();
                 }}
               >
-                <View style={[styles.channelIcon, { backgroundColor: colors.accentLight }]}>
-                  <Ionicons name="headset" size={22} color={colors.accent} />
+                <View style={[styles.channelIcon, { backgroundColor: '#EBF4FF' }]}>
+                  <Ionicons name="mail" size={22} color="#3B82F6" />
                 </View>
-                <View style={{ flex: 1, marginLeft: spacing.md }}>
-                  <Text style={styles.channelTitle}>In-App Voice Call (Simulated)</Text>
-                  <Text style={styles.channelDesc}>Connect directly with on-duty cooperative agent</Text>
+                <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                  <Text style={styles.channelName}>Official Email Support</Text>
+                  <Text style={styles.channelDetail}>support@sahakarsathi.coop</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* 2. Simulated In-App Live Call Screen */}
+      {/* 2. Simulated Toll-Free Live Call Modal */}
       <Modal visible={activeCallVisible} transparent={false} animationType="slide">
         <View style={styles.callScreen}>
-          <View style={styles.callTop}>
-            <View style={styles.callShieldBadge}>
-              <Ionicons name="shield-checkmark" size={16} color={colors.success} />
-              <Text style={styles.callShieldText}>ENCRYPTED COOPERATIVE LINE</Text>
-            </View>
-            <Text style={styles.callTitle}>Sahakar Sathi Support</Text>
-            <Text style={styles.callAgent}>Officer Savitha K. (Malleshwaram Hub)</Text>
-            <Text style={styles.callTimer}>{formatCallTime(callTimer)}</Text>
+          <View style={styles.callHeader}>
+            <Text style={styles.callOrg}>Sahakar Sathi National Federation</Text>
+            <Text style={styles.callStatus}>Connected • 24x7 Citizen Care</Text>
+            <Text style={styles.callTimerText}>{formatTimer(callTimer)}</Text>
           </View>
 
-          <View style={styles.callCenterAvatar}>
-            <View style={styles.callAvatarCircle}>
-              <Ionicons name="person" size={64} color={colors.primary} />
+          <View style={styles.callCenter}>
+            <View style={styles.callAvatarRing}>
+              <Ionicons name="headset" size={56} color={colors.textInverse} />
             </View>
-            <View style={styles.waveContainer}>
-              <View style={[styles.waveDot, { height: 16 }]} />
-              <View style={[styles.waveDot, { height: 28 }]} />
-              <View style={[styles.waveDot, { height: 42 }]} />
-              <View style={[styles.waveDot, { height: 24 }]} />
-              <View style={[styles.waveDot, { height: 36 }]} />
-              <View style={[styles.waveDot, { height: 20 }]} />
-            </View>
-            <Text style={styles.callNotice}>
-              "Hello! Welcome to Sahakar Sathi Cooperative Desk. How can we help you today?"
+            <Text style={styles.callerName}>Cooperative Customer Desk</Text>
+            <Text style={styles.callerNumber}>1800-724-2527 (Toll-Free)</Text>
+            <Text style={styles.callNote}>
+              This call is recorded for quality training and dispute arbitration under cooperative bylaws.
             </Text>
           </View>
 
           <View style={styles.callControls}>
             <TouchableOpacity
-              onPress={() => setIsMuted(!isMuted)}
               style={[styles.callControlBtn, isMuted && styles.callControlBtnActive]}
+              onPress={() => setIsMuted(!isMuted)}
             >
-              <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={24} color={colors.text} />
-              <Text style={styles.callControlLabel}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+              <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={24} color={colors.textInverse} />
+              <Text style={styles.callControlText}>{isMuted ? 'Muted' : 'Mute'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => setActiveCallVisible(false)}
-              style={styles.endCallBtn}
-            >
-              <Ionicons name="call" size={32} color="#FFF" style={{ transform: [{ rotate: '135deg' }] }} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setIsSpeaker(!isSpeaker)}
               style={[styles.callControlBtn, isSpeaker && styles.callControlBtnActive]}
+              onPress={() => setIsSpeaker(!isSpeaker)}
             >
-              <Ionicons name={isSpeaker ? 'volume-high' : 'volume-mute'} size={24} color={colors.text} />
-              <Text style={styles.callControlLabel}>{isSpeaker ? 'Speaker' : 'Earpiece'}</Text>
+              <Ionicons name={isSpeaker ? 'volume-high' : 'volume-medium'} size={24} color={colors.textInverse} />
+              <Text style={styles.callControlText}>{isSpeaker ? 'Speaker On' : 'Speaker'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.endCallBtn}
+              onPress={() => setActiveCallVisible(false)}
+            >
+              <Ionicons name="call" size={28} color={colors.textInverse} style={{ transform: [{ rotate: '135deg' }] }} />
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* 3. Help Topic Detail Modal */}
-      <Modal visible={Boolean(selectedTopic)} transparent animationType="fade" onRequestClose={() => setSelectedTopic(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            {selectedTopic && (
-              <>
-                <View style={styles.modalHeader}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={[styles.channelIcon, { width: 36, height: 36, borderRadius: 18, marginRight: 10, backgroundColor: colors.primaryLight }]}>
-                      <Ionicons name={selectedTopic.icon} size={20} color={colors.primary} />
-                    </View>
-                    <View>
-                      <Text style={styles.modalTitle}>{selectedTopic.title}</Text>
-                      <Text style={styles.modalSub}>{selectedTopic.summary}</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity onPress={() => setSelectedTopic(null)}>
-                    <Ionicons name="close" size={22} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.topicPointsList}>
-                  {selectedTopic.points.map((pt, idx) => (
-                    <View key={idx} style={styles.topicPointRow}>
-                      <Ionicons name="checkmark-circle" size={16} color={colors.success} style={{ marginTop: 2, marginRight: 8 }} />
-                      <Text style={styles.topicPointText}>{pt}</Text>
-                    </View>
-                  ))}
-                </View>
-
-                <View style={{ marginTop: spacing.md }}>
-                  <Button
-                    title={selectedTopic.actionLabel}
-                    onPress={selectedTopic.onAction}
-                    variant="primary"
-                    size="md"
-                    fullWidth
-                  />
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* 4. Grievance & Dispute Filing Modal */}
-      <Modal visible={grievanceModalVisible} transparent animationType="slide" onRequestClose={() => setGrievanceModalVisible(false)}>
+      {/* 3. Grievance Filing Modal */}
+      <Modal
+        visible={grievanceModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGrievanceModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { maxHeight: '90%' }]}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.modalTitle}>Cooperative Ombudsman Tribunal</Text>
+                <Text style={styles.modalTitle}>File Cooperative Grievance</Text>
                 <Text style={styles.modalSub}>Statutory dispute resolution and grievance filing</Text>
               </View>
               <TouchableOpacity onPress={() => setGrievanceModalVisible(false)}>
@@ -656,99 +984,89 @@ export const HelpSupportScreen: React.FC<HelpSupportScreenProps> = ({ onBack }) 
                   <Text style={styles.grievanceSuccessTitle}>Grievance Filed Successfully</Text>
                   <Text style={styles.grievanceSuccessBody}>{grievanceSuccessMessage}</Text>
                   <Button
-                    title="File Another Dispute"
-                    onPress={() => setGrievanceSuccessMessage(null)}
-                    variant="outline"
-                    size="sm"
+                    title="Close"
+                    onPress={() => {
+                      setGrievanceSuccessMessage(null);
+                      setGrievanceModalVisible(false);
+                    }}
                     style={{ marginTop: spacing.md }}
                   />
                 </View>
               ) : (
-                <>
+                <View style={styles.modalBody}>
                   <Text style={styles.formLabel}>Grievance Category</Text>
-                  <View style={styles.categoryGrid}>
-                    {['Service Quality', 'Billing / Overcharging', 'Delay / No-Show', 'Safety & Conduct', 'Other'].map((cat) => {
-                      const isSel = grievanceCategory === cat;
-                      return (
-                        <TouchableOpacity
-                          key={cat}
-                          onPress={() => setGrievanceCategory(cat)}
-                          style={[styles.miniCatPill, isSel && styles.miniCatPillActive]}
+                  <View style={styles.urgencyRow}>
+                    {['Service Quality', 'Billing Dispute', 'Worker Misconduct', 'Other'].map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        onPress={() => setGrievanceCategory(cat)}
+                        style={[
+                          styles.urgencyChip,
+                          grievanceCategory === cat && styles.urgencyChipActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.urgencyChipText,
+                            grievanceCategory === cat && styles.urgencyChipTextActive,
+                          ]}
                         >
-                          <Text style={[styles.miniCatText, isSel && styles.miniCatTextActive]}>{cat}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
 
-                  <Text style={styles.formLabel}>Booking Reference ID (Optional)</Text>
+                  <Text style={styles.formLabel}>Booking Reference (Optional)</Text>
                   <TextInput
+                    style={styles.modalInput}
+                    placeholder="e.g. BK-98241"
+                    placeholderTextColor={colors.textSecondary}
                     value={bookingRef}
                     onChangeText={setBookingRef}
-                    placeholder="e.g. SS-BK-2024"
-                    placeholderTextColor={colors.textMuted}
-                    style={styles.formInput}
                   />
 
-                  <Text style={styles.formLabel}>Urgency Level</Text>
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: spacing.sm }}>
-                    {(['Normal', 'High', 'Urgent'] as const).map((lvl) => {
-                      const isSel = urgencyLevel === lvl;
-                      return (
-                        <TouchableOpacity
-                          key={lvl}
-                          onPress={() => setUrgencyLevel(lvl)}
-                          style={[styles.urgencyPill, isSel && styles.urgencyPillActive]}
+                  <Text style={styles.formLabel}>Urgency Priority</Text>
+                  <View style={styles.urgencyRow}>
+                    {(['Normal', 'High', 'Urgent'] as const).map((lvl) => (
+                      <TouchableOpacity
+                        key={lvl}
+                        onPress={() => setUrgencyLevel(lvl)}
+                        style={[
+                          styles.urgencyChip,
+                          urgencyLevel === lvl && styles.urgencyChipActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.urgencyChipText,
+                            urgencyLevel === lvl && styles.urgencyChipTextActive,
+                          ]}
                         >
-                          <Text style={[styles.urgencyText, isSel && styles.urgencyTextActive]}>{lvl}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                          {lvl}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
 
-                  <Text style={styles.formLabel}>Describe Your Issue</Text>
+                  <Text style={styles.formLabel}>Description of Complaint *</Text>
                   <TextInput
+                    style={[styles.modalInput, styles.modalTextArea]}
+                    placeholder="Provide specific details of your grievance..."
+                    placeholderTextColor={colors.textSecondary}
                     value={grievanceDesc}
                     onChangeText={setGrievanceDesc}
-                    placeholder="Please provide specifics of what happened..."
-                    placeholderTextColor={colors.textMuted}
                     multiline
                     numberOfLines={4}
-                    style={[styles.formInput, { height: 90, textAlignVertical: 'top' }]}
+                    textAlignVertical="top"
                   />
 
                   <Button
-                    title="Submit to Cooperative Ombudsman"
-                    icon="shield-checkmark"
+                    title="Submit Statutory Grievance"
                     onPress={handleFileGrievance}
-                    variant="primary"
-                    size="md"
-                    fullWidth
-                    style={{ marginTop: spacing.md }}
                     disabled={!grievanceDesc.trim()}
+                    style={{ marginTop: spacing.md }}
                   />
-                </>
-              )}
-
-              {/* Previously Filed Tickets */}
-              {tickets.length > 0 && (
-                <View style={{ marginTop: spacing.lg }}>
-                  <Text style={styles.filedHeader}>Your Filed Disputes ({tickets.length})</Text>
-                  {tickets.map((t) => (
-                    <View key={t.id} style={styles.ticketCard}>
-                      <View style={styles.ticketTop}>
-                        <Text style={styles.ticketId}>{t.id}</Text>
-                        <Badge
-                          label={t.status}
-                          variant={t.status === 'Resolved' ? 'verified' : 'status'}
-                          status={t.status === 'Resolved' ? 'completed' : 'requested'}
-                        />
-                      </View>
-                      <Text style={styles.ticketCategory}>{t.category} • Ref: {t.bookingRef}</Text>
-                      <Text style={styles.ticketDesc}>{t.description}</Text>
-                      <Text style={styles.ticketDate}>{t.createdAt}</Text>
-                    </View>
-                  ))}
                 </View>
               )}
             </ScrollView>
@@ -764,20 +1082,89 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.sm,
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabButtonActive: {
+    borderBottomColor: colors.primary,
+  },
+  tabButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  tabButtonTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  scroll: {
+    flex: 1,
+  },
   scrollContent: {
     padding: spacing.md,
     paddingBottom: spacing.xxxl,
   },
-  heroCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+  emergencyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DC2626',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
     marginBottom: spacing.md,
+  },
+  emergencyIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emergencyTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textInverse,
+  },
+  emergencySub: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  emergencyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+    gap: 4,
+  },
+  emergencyBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textInverse,
+  },
+  helplineBanner: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  heroLeft: {
-    flexDirection: 'row',
+    marginBottom: spacing.md,
     alignItems: 'center',
   },
   headsetIcon: {
@@ -799,59 +1186,36 @@ const styles = StyleSheet.create({
   },
   heroButtonsRow: {
     flexDirection: 'row',
-    marginTop: spacing.md,
-  },
-  sectionTitle: {
-    ...typography.h4,
-    color: colors.text,
-    marginVertical: spacing.xs,
-  },
-  topicsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    marginTop: spacing.sm,
     gap: 8,
-    marginBottom: spacing.md,
   },
-  topicCard: {
-    width: '48%',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
+  heroCallBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+    gap: 4,
   },
-  topicIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topicTitle: {
+  heroCallBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.text,
-    marginTop: 8,
-    textAlign: 'center',
+    color: colors.textInverse,
   },
-  topicSub: {
-    fontSize: 10,
-    color: colors.textSecondary,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  faqSectionHeader: {
+  heroOptionsBtn: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: spacing.sm,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+    gap: 4,
   },
-  faqCountText: {
-    fontSize: 11,
-    color: colors.primary,
+  heroOptionsBtnText: {
+    fontSize: 12,
     fontWeight: '600',
+    color: colors.primary,
   },
   searchBox: {
     flexDirection: 'row',
@@ -859,23 +1223,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    marginVertical: spacing.sm,
+    paddingVertical: Platform.OS === 'ios' ? spacing.sm : 6,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: spacing.sm,
+    gap: 8,
   },
   searchInput: {
     flex: 1,
-    marginLeft: spacing.sm,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.text,
-    padding: 0,
   },
-  categoryPills: {
-    gap: 6,
-    paddingBottom: spacing.sm,
+  chipsScroll: {
+    marginBottom: spacing.md,
   },
-  catPill: {
+  chipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: borderRadius.round,
@@ -883,124 +1249,153 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  catPillActive: {
-    backgroundColor: colors.primaryLight,
+  chipActive: {
+    backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  catPillText: {
-    fontSize: 11,
-    fontWeight: '600',
+  chipText: {
+    fontSize: 12,
     color: colors.textSecondary,
   },
-  catPillTextActive: {
-    color: colors.primary,
+  chipTextActive: {
+    color: colors.textInverse,
+    fontWeight: '600',
   },
-  faqsList: {
-    gap: 8,
-    marginBottom: spacing.md,
+  sectionTitle: {
+    ...typography.h4,
+    color: colors.text,
+    marginVertical: spacing.xs,
   },
-  emptyFaq: {
-    alignItems: 'center',
+  noFaqsBox: {
     padding: spacing.xl,
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginVertical: spacing.sm,
   },
-  emptyFaqTitle: {
-    fontSize: 13,
+  noFaqsTitle: {
+    fontSize: 14,
     fontWeight: '700',
     color: colors.text,
-    marginTop: 6,
+    marginTop: spacing.sm,
   },
-  emptyFaqSub: {
-    fontSize: 11,
+  noFaqsSub: {
+    fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 2,
     textAlign: 'center',
+    marginTop: 4,
+  },
+  inlineRaiseBtn: {
+    marginTop: spacing.md,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary,
+  },
+  inlineRaiseBtnText: {
+    color: colors.textInverse,
+    fontWeight: '600',
+    fontSize: 12,
   },
   faqCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,
-    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
   },
-  faqCardExpanded: {
-    borderColor: colors.primary,
-  },
-  faqTop: {
+  faqHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+  },
+  faqTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.sm,
+    gap: 8,
+  },
+  faqDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
   },
   faqQuestion: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.text,
     flex: 1,
-    marginRight: 6,
   },
   faqBody: {
-    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
     paddingTop: spacing.sm,
   },
   faqAnswer: {
     fontSize: 12,
-    color: colors.textSecondary,
     lineHeight: 18,
+    color: colors.textSecondary,
   },
-  feedbackRow: {
+  faqFeedbackRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: spacing.sm,
     paddingTop: spacing.xs,
-  },
-  feedbackPrompt: {
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-  feedbackButtons: {
-    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
     gap: 8,
+  },
+  faqFeedbackLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
   },
   feedbackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: borderRadius.xs,
+    borderRadius: borderRadius.sm,
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: 3,
+  },
+  feedbackBtnSelected: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   feedbackBtnText: {
     fontSize: 10,
-    fontWeight: '600',
     color: colors.textSecondary,
   },
-  feedbackThanks: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.success,
+  feedbackBtnTextSelected: {
+    color: colors.primary,
+    fontWeight: '700',
   },
   reportBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.dangerLight,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: 'rgba(220, 38, 38, 0.25)',
+    borderColor: '#FECACA',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
     marginBottom: spacing.md,
   },
   reportIconBox: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.surface,
+    backgroundColor: '#FEE2E2',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1010,39 +1405,39 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
   reportSub: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
-    marginTop: 1,
+    marginTop: 2,
   },
   chapterCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.md,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: spacing.md,
   },
   chapterHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     marginBottom: spacing.xs,
   },
   chapterTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.text,
   },
   chapterAddress: {
     fontSize: 11,
-    color: colors.textSecondary,
     lineHeight: 16,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
   chapterDetailsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xs,
+    gap: 16,
+    marginBottom: spacing.xs,
   },
   chapterLink: {
     flexDirection: 'row',
@@ -1051,45 +1446,289 @@ const styles = StyleSheet.create({
   },
   chapterLinkText: {
     fontSize: 11,
-    fontWeight: '600',
     color: colors.primary,
+    fontWeight: '600',
   },
   chapterHours: {
     fontSize: 10,
     color: colors.textMuted,
+  },
+  ticketTabContainer: {
+    paddingVertical: spacing.xs,
+  },
+  ticketForm: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  formTitle: {
+    ...typography.h4,
+    color: colors.text,
+  },
+  formSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+    marginBottom: spacing.md,
+  },
+  errorAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.md,
+    gap: 6,
+  },
+  errorAlertText: {
+    fontSize: 12,
+    color: colors.danger,
+    flex: 1,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: spacing.md,
+  },
+  categoryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 6,
+  },
+  categoryCardSelected: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  categoryCardText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  categoryCardTextSelected: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  fieldContainer: {
+    marginBottom: spacing.md,
+  },
+  textInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: Platform.OS === 'ios' ? spacing.sm : 6,
+    fontSize: 13,
+    color: colors.text,
+  },
+  textArea: {
+    height: 90,
+  },
+  bookingChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: borderRadius.round,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  bookingChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  bookingChipText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  bookingChipTextSelected: {
+    color: colors.textInverse,
+    fontWeight: '600',
+  },
+  successTicketBox: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  successIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  successTitle: {
+    ...typography.h3,
+    color: colors.text,
+  },
+  successCode: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
     marginTop: 4,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    justifyContent: 'center',
+  successDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    lineHeight: 18,
+  },
+  successActionsRow: {
+    flexDirection: 'row',
+    marginTop: spacing.xl,
+    width: '100%',
+  },
+  myTicketsContainer: {
+    paddingVertical: spacing.xs,
+  },
+  myTicketsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  refreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  refreshBtnText: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  emptyTicketsBox: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.xxl,
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  emptyTicketsTitle: {
+    ...typography.h4,
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  emptyTicketsSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  ticketCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  ticketHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.md,
   },
+  ticketCode: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  statusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statusBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  ticketSubject: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 2,
+  },
+  ticketDate: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  ticketDetailsBody: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    paddingTop: spacing.sm,
+  },
+  ticketMessageLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  ticketMessageText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  resolutionBox: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  resolutionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.success,
+    marginBottom: 2,
+  },
+  resolutionText: {
+    fontSize: 11,
+    color: colors.text,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: spacing.md,
+  },
   modalCard: {
-    width: '100%',
-    maxWidth: 450,
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 10,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: spacing.md,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
   },
   modalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    ...typography.h4,
     color: colors.text,
   },
   modalSub: {
@@ -1103,270 +1742,184 @@ const styles = StyleSheet.create({
   channelItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    padding: spacing.sm,
     borderRadius: borderRadius.md,
-    padding: spacing.md,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
   },
   channelIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  channelTitle: {
+  channelName: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.text,
   },
-  channelDesc: {
+  channelDetail: {
     fontSize: 11,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
   },
   callScreen: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#1E293B',
+    padding: spacing.xl,
     justifyContent: 'space-between',
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.lg,
+  },
+  callHeader: {
     alignItems: 'center',
+    marginTop: spacing.xxl,
   },
-  callTop: {
-    alignItems: 'center',
-    marginTop: spacing.xl,
-  },
-  callShieldBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: borderRadius.round,
-    marginBottom: spacing.sm,
-  },
-  callShieldText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.success,
-  },
-  callTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#FFF',
-  },
-  callAgent: {
+  callOrg: {
     fontSize: 13,
-    color: '#94A3B8',
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  callStatus: {
+    fontSize: 16,
+    color: colors.textInverse,
+    fontWeight: '700',
     marginTop: 4,
   },
-  callTimer: {
-    fontSize: 16,
+  callTimerText: {
+    fontSize: 18,
+    color: colors.primaryLight,
     fontWeight: '700',
-    color: colors.primary,
-    marginTop: spacing.sm,
+    marginTop: 8,
   },
-  callCenterAvatar: {
+  callCenter: {
     alignItems: 'center',
-    width: '100%',
   },
-  callAvatarCircle: {
+  callAvatarRing: {
     width: 110,
     height: 110,
     borderRadius: 55,
-    backgroundColor: '#1E293B',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.primary,
+    marginBottom: spacing.lg,
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
-  waveContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: spacing.lg,
-    height: 50,
+  callerName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textInverse,
   },
-  waveDot: {
-    width: 5,
-    backgroundColor: colors.primary,
-    borderRadius: 3,
+  callerNumber: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
   },
-  callNotice: {
-    fontSize: 12,
-    color: '#CBD5E1',
+  callNote: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
-    fontStyle: 'italic',
     marginTop: spacing.md,
+    lineHeight: 16,
     paddingHorizontal: spacing.lg,
   },
   callControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    width: '100%',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xl,
   },
   callControlBtn: {
     alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: borderRadius.round,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 70,
+    height: 70,
     justifyContent: 'center',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#1E293B',
   },
   callControlBtnActive: {
-    backgroundColor: colors.primaryLight,
+    backgroundColor: colors.primary,
   },
-  callControlLabel: {
+  callControlText: {
     fontSize: 10,
-    color: '#94A3B8',
+    color: colors.textInverse,
     marginTop: 4,
   },
   endCallBtn: {
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: colors.danger,
+    backgroundColor: '#EF4444',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topicPointsList: {
-    gap: spacing.sm,
-    marginVertical: spacing.sm,
-  },
-  topicPointRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  topicPointText: {
-    fontSize: 12,
-    color: colors.text,
-    flex: 1,
-    lineHeight: 18,
+  modalBody: {
+    gap: spacing.xs,
   },
   formLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: colors.textSecondary,
+    color: colors.text,
+    marginTop: spacing.xs,
     marginBottom: 4,
-    marginTop: spacing.sm,
   },
-  categoryGrid: {
+  urgencyRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: spacing.xs,
+    gap: 8,
+    marginBottom: spacing.sm,
   },
-  miniCatPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: borderRadius.round,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  miniCatPillActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
-  },
-  miniCatText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  miniCatTextActive: {
-    color: colors.primary,
-  },
-  formInput: {
-    backgroundColor: colors.background,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    fontSize: 12,
-    color: colors.text,
-  },
-  urgencyPill: {
-    flex: 1,
-    alignItems: 'center',
+  urgencyChip: {
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: borderRadius.sm,
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  urgencyPillActive: {
-    backgroundColor: colors.accentLight,
-    borderColor: colors.accent,
+  urgencyChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  urgencyText: {
+  urgencyChipText: {
     fontSize: 11,
-    fontWeight: '600',
     color: colors.textSecondary,
   },
-  urgencyTextActive: {
-    color: colors.accentDark,
+  urgencyChipTextActive: {
+    color: colors.textInverse,
     fontWeight: '700',
+  },
+  modalInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    fontSize: 12,
+    color: colors.text,
+  },
+  modalTextArea: {
+    height: 80,
   },
   grievanceSuccessCard: {
     alignItems: 'center',
     padding: spacing.lg,
   },
   grievanceSuccessTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
+    ...typography.h4,
+    color: colors.success,
     marginTop: spacing.sm,
   },
   grievanceSuccessBody: {
     fontSize: 12,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: spacing.xs,
     lineHeight: 18,
-  },
-  filedHeader: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  ticketCard: {
-    backgroundColor: colors.background,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  ticketTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  ticketId: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  ticketCategory: {
-    fontSize: 10,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  ticketDesc: {
-    fontSize: 11,
-    color: colors.text,
-    marginTop: 4,
-  },
-  ticketDate: {
-    fontSize: 9,
-    color: colors.textMuted,
-    marginTop: 4,
   },
 });

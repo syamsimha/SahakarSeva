@@ -55,6 +55,8 @@ export interface WorkerProfile extends BaseUser {
   verificationStatus: WorkerVerificationStatus;
   documents: WorkerDocument[];
   distanceKm?: number;
+  latitude?: number;
+  longitude?: number;
   welfareMemberId: string;
   bankAccountLinked: boolean;
 }
@@ -126,8 +128,17 @@ export interface ServiceLocation {
   landmark?: string;
   city: string;
   pincode: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
+  locationMode?: 'GPS' | 'MANUAL';
+  manualDetails?: {
+    houseFlat?: string;
+    street?: string;
+    area?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+  };
 }
 
 export interface Booking {
@@ -152,7 +163,14 @@ export interface Booking {
   finalAmount?: number;
   welfareCessAmount: number; // 5% cooperative worker welfare
   isEmergency: boolean;
+  isPriority?: boolean;
+  workerLocation?: {
+    latitude: number;
+    longitude: number;
+    updatedAt?: string;
+  };
   createdAt: string;
+  completedAt?: string;
   statusHistory: Array<{
     status: BookingStatus;
     timestamp: string;
@@ -272,4 +290,31 @@ export interface Invoice {
   totalAmount: number;
   paymentMethod: string;
   paymentStatus: 'paid' | 'unpaid';
+}
+
+export type SupportCategory =
+  | 'booking_issue'
+  | 'payment_dispute'
+  | 'worker_conduct'
+  | 'location_gps'
+  | 'app_technical'
+  | 'general_inquiry';
+
+export type SupportRequestStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
+
+export interface SupportRequest {
+  id: string;
+  ticketCode: string;
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  bookingId?: string;
+  bookingCode?: string;
+  category: SupportCategory;
+  subject: string;
+  message: string;
+  status: SupportRequestStatus;
+  createdAt: string;
+  updatedAt: string;
 }

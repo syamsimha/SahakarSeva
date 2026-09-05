@@ -22,12 +22,17 @@ import {
   WorkerProfile,
   ServiceCategoryKey,
   Booking,
+  Customer,
 } from '../../types';
+import { filterWorkersByCategory } from './customerWorkerFilter';
+import { getDynamicDateOptions } from '../../utils/dateTime';
+import { LocationCoords } from '../../services/locationService';
 import { Ionicons } from '@expo/vector-icons';
 
 interface BookingFlowScreenProps {
   initialWorkerId?: string;
   initialServiceId?: string;
+  customerLocation?: LocationCoords;
   onBookingSuccess: (booking: Booking) => void;
   onCancel: () => void;
 }
@@ -94,10 +99,13 @@ const isSameDay = (a: Date, b: Date): boolean => {
 export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   initialWorkerId,
   initialServiceId,
+  customerLocation,
   onBookingSuccess,
   onCancel,
 }) => {
   const { user } = useAuth();
+  const customer = user?.role === 'customer' ? (user as Customer) : null;
+  const savedAddresses = customer?.savedAddresses || [];
   const { createBooking } = useBookings();
   const { currentLocation, openLocationModal, detectLiveGPS } = useLocation();
 
@@ -170,19 +178,26 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   // ============================================================
 
   const [addressLine, setAddressLine] = useState(
-    currentLocation?.address || user?.address || ''
+    customerLocation?.address || currentLocation?.address || user?.address || ''
   );
 
   const [landmark, setLandmark] = useState('');
 
-  const [coordinates, setCoordinates] = useState<Coordinates | null>(
-    currentLocation
-      ? {
-          latitude: currentLocation.latitude,
-          longitude: currentLocation.longitude,
-        }
-      : null
-  );
+  const [coordinates, setCoordinates] = useState<Coordinates | null>(() => {
+    if (typeof customerLocation?.latitude === 'number' && typeof customerLocation?.longitude === 'number') {
+      return {
+        latitude: customerLocation.latitude,
+        longitude: customerLocation.longitude,
+      };
+    }
+    if (typeof currentLocation?.latitude === 'number' && typeof currentLocation?.longitude === 'number') {
+      return {
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+      };
+    }
+    return null;
+  });
 
   const [locationLoading, setLocationLoading] = useState(false);
 
@@ -191,7 +206,11 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   );
 
   useEffect(() => {
-    if (currentLocation?.address) {
+    if (
+      currentLocation?.address &&
+      typeof currentLocation.latitude === 'number' &&
+      typeof currentLocation.longitude === 'number'
+    ) {
       setAddressLine(currentLocation.address);
       setCoordinates({
         latitude: currentLocation.latitude,
@@ -215,6 +234,29 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
     useState<PaymentMethod>('upi');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPriority, setIsPriority] = useState(false);
+
+  // Sync category if worker was provided initially
+  useEffect(() => {
+    if (initialWorkerId) {
+      workerService.getWorkerById(initialWorkerId).then((w) => {
+        if (w) {
+          const matchedCat = serviceCategories.find(
+            (c) =>
+              w.primarySkill.toLowerCase().includes(c.id) ||
+              (c.id === 'electrical' && w.primarySkill.toLowerCase().includes('electric')) ||
+              (c.id === 'cleaning' && w.primarySkill.toLowerCase().includes('clean')) ||
+              (c.id === 'technical' && w.primarySkill.toLowerCase().includes('tech')) ||
+              (c.id === 'driving' && w.primarySkill.toLowerCase().includes('driv')) ||
+              (c.id === 'gardening' && w.primarySkill.toLowerCase().includes('garden'))
+          );
+          if (matchedCat) {
+            setSelectedCategory(matchedCat.id);
+          }
+        }
+      });
+    }
+  }, [initialWorkerId]);
 
   // ============================================================
   // LOAD WORKERS
@@ -282,7 +324,9 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
 
   const gst = Math.round(baseRate * 0.05);
 
-  const totalAmount = baseRate + welfareCess + gst;
+  const priorityFee = isPriority ? 150 : 0;
+
+  const totalAmount = baseRate + welfareCess + gst + priorityFee;
 
   // ============================================================
   // LIVE CALENDAR HELPERS
@@ -632,21 +676,26 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
             landmark.trim() || 'Not provided',
 
           city:
-            'Bengaluru',
+            customerLocation?.city || customer?.city || 'Bengaluru',
 
           pincode:
-            '560038',
+            customerLocation?.pincode || '560038',
 
-          /*
-           * Use live coordinates when available.
-           * Fallback is only used when user manually enters
-           * an address without providing GPS.
-           */
           latitude:
-            coordinates?.latitude ?? 12.9784,
+            coordinates?.latitude ??
+            (customerLocation?.coordinatesAvailable !== false ? customerLocation?.latitude : undefined) ??
+            12.9784,
 
           longitude:
-            coordinates?.longitude ?? 77.6408,
+            coordinates?.longitude ??
+            (customerLocation?.coordinatesAvailable !== false ? customerLocation?.longitude : undefined) ??
+            77.6408,
+
+          locationMode:
+            coordinates ? 'GPS' : (customerLocation?.locationMode || (customerLocation?.isGps ? 'GPS' : 'MANUAL')),
+
+          manualDetails:
+            customerLocation?.manualDetails,
         },
 
         instructions:
@@ -661,6 +710,9 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
 
         isEmergency:
           false,
+
+        isPriority:
+          isPriority,
 
         paymentMethod,
 
@@ -1261,6 +1313,44 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
               </View>
             )}
 
+            {savedAddresses.length > 0 && (
+              <View style={styles.savedAddressesBox}>
+                <Text style={styles.savedChipGroupTitle}>Quick Select from Saved Addresses:</Text>
+                <View style={styles.savedChipsRow}>
+                  {savedAddresses.map((addr) => {
+                    const isSelected = addressLine === addr.address;
+                    return (
+                      <TouchableOpacity
+                        key={addr.id}
+                        onPress={() => {
+                          setAddressLine(addr.address);
+                          setLandmark(addr.title);
+                        }}
+                        style={[
+                          styles.savedAddressChip,
+                          isSelected && styles.savedAddressChipActive,
+                        ]}
+                      >
+                        <Ionicons
+                          name="bookmark-outline"
+                          size={12}
+                          color={isSelected ? colors.primary : colors.textMuted}
+                        />
+                        <Text
+                          style={[
+                            styles.savedAddressChipText,
+                            isSelected && styles.savedAddressChipTextActive,
+                          ]}
+                        >
+                          {addr.title}: {addr.address.substring(0, 20)}...
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
             <Text style={styles.inputLabel}>
               Street Address / Flat Number
             </Text>
@@ -1295,14 +1385,16 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
 
             <View style={styles.locationTrustNotice}>
               <Ionicons
-                name="shield-checkmark"
-                size={18}
-                color={colors.primary}
+                name={customerLocation?.isGps ? 'navigate' : customerLocation?.locationMode === 'MANUAL' ? 'create' : 'shield-checkmark'}
+                size={16}
+                color={customerLocation?.isGps ? colors.info : colors.primary}
               />
-
               <Text style={styles.locationTrustText}>
-                Your location is used only to help the cooperative
-                worker reach the service address.
+                {customerLocation?.isGps
+                  ? `Source: Live GPS Coordinates (${customerLocation.latitude?.toFixed(4)}, ${customerLocation.longitude?.toFixed(4)})`
+                  : customerLocation?.locationMode === 'MANUAL'
+                  ? `Source: Manual Address Entry ${customerLocation.coordinatesAvailable === false ? '(Offline Mode)' : ''}`
+                  : `Your location is used only to help the cooperative worker reach the service address.`}
               </Text>
             </View>
 
@@ -1447,14 +1539,43 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
                   {addressLine}
                 </Text>
 
-                {coordinates && (
-                  <Text style={styles.summarySecondary}>
-                    GPS: {coordinates.latitude.toFixed(5)},{' '}
-                    {coordinates.longitude.toFixed(5)}
-                  </Text>
-                )}
+                <Text style={{ fontSize: 11, color: colors.primary, marginTop: 2, fontWeight: '600' }}>
+                  {coordinates || customerLocation?.isGps ? '📍 Source: Live Device GPS' : '📍 Source: Manual Address Entry'}
+                </Text>
               </View>
             </View>
+
+            {/* Priority 24/7 Option Toggle */}
+            <TouchableOpacity
+              style={[styles.priorityCard, isPriority && styles.priorityCardActive]}
+              onPress={() => setIsPriority(!isPriority)}
+            >
+              <View style={styles.priorityLeft}>
+                <Ionicons
+                  name="flash"
+                  size={20}
+                  color={isPriority ? colors.danger : colors.textMuted}
+                />
+                <View style={{ marginLeft: spacing.sm, flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.priorityTitle}>Priority 24/7 Dispatch</Text>
+                    <View style={styles.priorityBadge}>
+                      <Text style={styles.priorityBadgeText}>+₹150</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.priorityDesc}>
+                    Guaranteed immediate dispatch & prioritized guild worker assignment.
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.priorityToggle, isPriority && styles.priorityToggleActive]}>
+                <Ionicons
+                  name={isPriority ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={isPriority ? colors.danger : colors.textMuted}
+                />
+              </View>
+            </TouchableOpacity>
 
             <View style={styles.breakdownBox}>
               <Text style={styles.breakdownHeader}>
@@ -1490,6 +1611,13 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
                   ₹{gst}
                 </Text>
               </View>
+
+              {isPriority && (
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Priority 24/7 Dispatch Fee</Text>
+                  <Text style={[styles.breakdownAmount, { color: colors.danger }]}>₹{priorityFee}</Text>
+                </View>
+              )}
 
               <View style={styles.breakdownTotalRow}>
                 <Text style={styles.totalLabel}>
@@ -2180,6 +2308,101 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 3,
   },
+
+
+  savedAddressesBox: {
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  savedChipGroupTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  savedChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  savedAddressChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 4,
+  },
+  savedAddressChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  savedAddressChipText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginLeft: 4,
+  },
+  savedAddressChipTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  priorityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  priorityCardActive: {
+    borderColor: colors.danger,
+    backgroundColor: '#FFFBFB',
+  },
+  priorityLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  priorityTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  priorityBadge: {
+    backgroundColor: colors.dangerLight,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: borderRadius.xs,
+    marginLeft: spacing.xs,
+  },
+  priorityBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.danger,
+  },
+  priorityDesc: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  priorityToggle: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  priorityToggleActive: {},
 
   breakdownBox: {
     backgroundColor: colors.primarySurface,

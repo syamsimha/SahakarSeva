@@ -40,7 +40,7 @@ export const LanguageModal: React.FC<LanguageModalProps> = ({ visible, onClose }
             <View style={styles.content}>
               <View style={styles.header}>
                 <View>
-                  <Text style={styles.title}>Language / भाषा / భాష</Text>
+                  <Text style={styles.title}>{t('select_language_title') || 'Language / भाषा / భాష'}</Text>
                   <Text style={styles.subtitle}>{t('select_language')}</Text>
                 </View>
                 <TouchableOpacity onPress={onClose} style={styles.closeBtn}>

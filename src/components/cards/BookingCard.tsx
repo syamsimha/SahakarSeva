@@ -4,6 +4,8 @@ import { Booking } from '../../types';
 import { colors, borderRadius, spacing, typography } from '../../theme';
 import { Badge, Button } from '../ui';
 import { Ionicons } from '@expo/vector-icons';
+import { formatCompletedDate } from '../../utils/dateTime';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface BookingCardProps {
   booking: Booking;
@@ -20,6 +22,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
   onRate,
   onTrack,
 }) => {
+  const { t } = useLanguage();
   const isEmergency = booking.isEmergency;
   const isCompleted = booking.status === 'completed';
   const isActive =
@@ -40,6 +43,11 @@ export const BookingCard: React.FC<BookingCardProps> = ({
             <Ionicons name="flash" size={14} color={colors.danger} style={{ marginRight: 4 }} />
           )}
           <Text style={styles.bookingCode}>{booking.bookingCode}</Text>
+          {booking.isPriority && (
+            <View style={styles.priorityPill}>
+              <Text style={styles.priorityPillText}>PRIORITY 24/7</Text>
+            </View>
+          )}
         </View>
         <Badge status={booking.status} />
       </View>
@@ -61,8 +69,21 @@ export const BookingCard: React.FC<BookingCardProps> = ({
       {/* Schedule & Location */}
       <View style={styles.metaBox}>
         <View style={styles.metaRow}>
-          <Ionicons name="calendar-outline" size={13} color={colors.textSecondary} />
-          <Text style={styles.metaText}>{booking.scheduledDate} ({booking.scheduledTimeSlot})</Text>
+          <Ionicons
+            name={isCompleted ? "checkmark-circle-outline" : "calendar-outline"}
+            size={13}
+            color={isCompleted ? colors.success : colors.textSecondary}
+          />
+          <Text style={[styles.metaText, isCompleted && { color: colors.text, fontWeight: '600' }]}>
+            {isCompleted
+              ? t('completed_on', {
+                  date: formatCompletedDate(
+                    booking.completedAt ||
+                      booking.statusHistory?.find((s) => s.status === 'completed')?.timestamp
+                  ),
+                })
+              : `${booking.scheduledDate} (${booking.scheduledTimeSlot})`}
+          </Text>
         </View>
         <View style={[styles.metaRow, { marginTop: 4 }]}>
           <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
@@ -73,14 +94,14 @@ export const BookingCard: React.FC<BookingCardProps> = ({
       {/* Footer / Price & Dynamic Actions */}
       <View style={styles.footerRow}>
         <View style={styles.priceCol}>
-          <Text style={styles.priceLabel}>Estimated Fair Wage</Text>
+          <Text style={styles.priceLabel}>{t('estimated_fair_wage')}</Text>
           <Text style={styles.priceAmount}>₹{booking.estimatedAmount}</Text>
         </View>
 
         <View style={styles.actionsRow}>
           {isActive && onTrack && (
             <Button
-              title="Track Worker"
+              title={t('track')}
               icon="navigate"
               onPress={onTrack}
               variant="primary"
@@ -91,7 +112,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
 
           {isCompleted && !booking.hasRated && onRate && (
             <Button
-              title="Rate Service"
+              title={t('rate_service')}
               icon="star"
               onPress={onRate}
               variant="secondary"
@@ -102,7 +123,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
 
           {isCompleted && onViewInvoice && (
             <Button
-              title="Invoice"
+              title={t('view_invoice')}
               icon="receipt-outline"
               onPress={onViewInvoice}
               variant="outline"
@@ -112,7 +133,7 @@ export const BookingCard: React.FC<BookingCardProps> = ({
           )}
 
           <Button
-            title="Details"
+            title={t('details')}
             onPress={onPress}
             variant="outline"
             size="sm"
@@ -227,5 +248,19 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  priorityPill: {
+    backgroundColor: colors.dangerLight,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: borderRadius.xs,
+    marginLeft: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(220, 38, 38, 0.3)',
+  },
+  priorityPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.danger,
   },
 });

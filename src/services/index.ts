@@ -7,3 +7,4 @@ export * from './notificationService';
 export * from './analyticsService';
 export * from './welfareService';
 export * from './integrationTest';
+export * from './invoiceShareService';

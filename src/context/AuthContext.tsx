@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppUser, UserRole } from '../types';
+import { AppUser, UserRole, Customer } from '../types';
 import { authService, RegisterPayload, mapFriendlyAuthError } from '../services/authService';
 
 interface AuthContextType {
@@ -20,6 +20,7 @@ interface AuthContextType {
   updateUser: (updates: Partial<AppUser>) => Promise<void>;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
+  updateCustomerProfile: (data: Partial<Customer>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -38,6 +39,7 @@ const AuthContext = createContext<AuthContextType>({
   updateUser: async () => { },
   completeOnboarding: () => { },
   resetOnboarding: () => { },
+  updateCustomerProfile: async () => { },
 });
 
 const LAST_ACTIVE_KEY = '@sahakar_last_active_timestamp';
@@ -358,6 +360,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsOnboarded(false);
   };
 
+  const updateCustomerProfile = async (data: Partial<Customer>) => {
+    setIsLoading(true);
+    try {
+      const updated = await authService.updateCustomerProfile(data);
+      setUser(updated);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -376,6 +388,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateUser,
         completeOnboarding,
         resetOnboarding,
+        updateCustomerProfile,
       }}
     >
       {children}
