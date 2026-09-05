@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   FlatList,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
@@ -22,8 +24,16 @@ interface JobManagementScreenProps {
 type TabType = 'active' | 'accepted' | 'completed';
 
 export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack }) => {
-  const { bookings, updateStatus } = useBookings();
+  const {
+    bookings,
+    updateStatus,
+    generateCompletionOtp,
+    verifyCompletionOtp,
+  } = useBookings();
   const [activeTab, setActiveTab] = useState<TabType>('active');
+  const [otpModalVisible, setOtpModalVisible] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [enteredOtp, setEnteredOtp] = useState('');
 
   const filterJobs = (tab: TabType): Booking[] => {
     switch (tab) {
@@ -46,8 +56,24 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
     } else if (booking.status === 'on_the_way') {
       updateStatus(booking.id, 'in_progress', 'Work commenced at customer site');
     } else if (booking.status === 'in_progress') {
-      updateStatus(booking.id, 'completed', 'Job successfully completed by worker');
-      Alert.alert('Job Completed', 'Payment of ₹' + booking.estimatedAmount + ' marked for direct bank settlement.');
+      const otp = generateCompletionOtp(booking.id);
+
+      if (!otp) {
+        Alert.alert(
+          'Error',
+          'Unable to generate completion code.'
+        );
+        return;
+      }
+
+      setSelectedBooking({
+        ...booking,
+        completionOtp: otp,
+        completionOtpVerified: false,
+      });
+
+      setEnteredOtp('');
+      setOtpModalVisible(true);
     }
   };
 
@@ -83,7 +109,7 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <View style={styles.jobWrapper}>
-            <BookingCard booking={item} onPress={() => {}} />
+            <BookingCard booking={item} onPress={() => { }} />
 
             {/* Stepper controls */}
             {item.status !== 'completed' && item.status !== 'cancelled' && (
@@ -129,6 +155,98 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
           />
         }
       />
+      <Modal
+        visible={otpModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOtpModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>
+              Verify Job Completion
+            </Text>
+
+            <Text style={styles.modalMessage}>
+              Ask the customer for their 4-digit completion code.
+            </Text>
+
+            <TextInput
+              value={enteredOtp}
+              onChangeText={(text) =>
+                setEnteredOtp(text.replace(/[^0-9]/g, '').slice(0, 4))
+              }
+              placeholder="Enter 4-digit code"
+              keyboardType="number-pad"
+              maxLength={4}
+              style={styles.otpInput}
+              autoFocus
+            />
+
+            <View style={styles.modalButtons}>
+              <Button
+                title="Cancel"
+                onPress={() => {
+                  setOtpModalVisible(false);
+                  setSelectedBooking(null);
+                  setEnteredOtp('');
+                }}
+                variant="secondary"
+                size="sm"
+              />
+
+              <Button
+                title="Verify & Complete"
+                onPress={async () => {
+                  if (!selectedBooking) {
+                    return;
+                  }
+
+                  if (enteredOtp.length !== 4) {
+                    Alert.alert(
+                      'Invalid Code',
+                      'Please enter the 4-digit customer completion code.'
+                    );
+                    return;
+                  }
+
+                  const verified = verifyCompletionOtp(
+                    selectedBooking.id,
+                    enteredOtp
+                  );
+
+                  if (!verified) {
+                    Alert.alert(
+                      'Incorrect Code',
+                      'The code is incorrect. The job has not been completed.'
+                    );
+                    return;
+                  }
+
+                  const completed = await updateStatus(
+                    selectedBooking.id,
+                    'completed',
+                    'Job successfully completed after customer OTP verification'
+                  );
+
+                  if (completed) {
+                    setOtpModalVisible(false);
+                    setSelectedBooking(null);
+                    setEnteredOtp('');
+
+                    Alert.alert(
+                      'Job Completed',
+                      `Payment of ₹${selectedBooking.estimatedAmount} marked for direct bank settlement.`
+                    );
+                  }
+                }}
+                variant="primary"
+                size="sm"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -185,5 +303,51 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.xs,
     textTransform: 'uppercase',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+
+  modalContainer: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+  },
+
+  modalTitle: {
+    fontSize: typography.h3.fontSize,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+
+  modalMessage: {
+    fontSize: typography.body.fontSize,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+
+  otpInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: 24,
+    textAlign: 'center',
+    letterSpacing: 8,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
 });

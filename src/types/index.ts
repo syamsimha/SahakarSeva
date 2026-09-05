@@ -159,6 +159,13 @@ export interface Booking {
     note?: string;
   }>;
   hasRated?: boolean;
+
+  // Booking workflow fields
+  rejectionReason?: string;
+  cancellationReason?: string;
+  completionOtp?: string;
+  completionOtpVerified?: boolean;
+
   paymentMethod?: 'upi' | 'card' | 'netbanking' | 'cash';
   paymentStatus?: 'pending' | 'completed' | 'refunded';
 }

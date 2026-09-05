@@ -66,7 +66,7 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
   return (
     <View style={styles.container}>
       <Header
-        title="Worker Console"
+        title={t('worker_console')}
         subtitle={worker?.cooperativeName || 'Nagarika Seva Cooperative'}
         onNotificationPress={onNavigateToNotifications}
         unreadNotificationsCount={unreadCount}
@@ -79,10 +79,10 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
             <View style={[styles.statusDot, { backgroundColor: isAvailable ? colors.success : colors.textMuted }]} />
             <View>
               <Text style={styles.statusTitle}>
-                {isAvailable ? 'You are Online • Ready for Jobs' : 'You are Offline'}
+                {isAvailable ? t('you_are_online') : t('you_are_offline')}
               </Text>
               <Text style={styles.statusDesc}>
-                {isAvailable ? 'Receiving priority dispatch nearby' : 'Turn on to receive booking requests'}
+                {isAvailable ? t('dispatch_nearby') : t('turn_on_dispatch')}
               </Text>
             </View>
           </View>
@@ -97,14 +97,14 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
         {/* Quick KPI Strip */}
         <View style={styles.statsGrid}>
           <StatCard
-            title="Today's Fair Earnings"
+            title={t('today_fair_earnings')}
             value="₹1,240"
             icon="cash-outline"
             color={colors.primary}
-            subtitle="Direct transfer today"
+            subtitle={t('direct_transfer_today')}
           />
           <StatCard
-            title="Pending Requests"
+            title={t('pending_requests')}
             value={pendingRequests.length}
             icon="time-outline"
             color={colors.accent}
@@ -114,7 +114,7 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
 
         <View style={styles.statsGrid}>
           <StatCard
-            title="Active Jobs In-Flight"
+            title={t('active_jobs')}
             value={activeJobs.length}
             icon="construct-outline"
             color={colors.info}
@@ -139,7 +139,7 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
             <Ionicons name="shield-checkmark" size={24} color={colors.primary} />
           </View>
           <View style={styles.welfareTexts}>
-            <Text style={styles.welfareTitle}>Cooperative Welfare & Insurance Shield</Text>
+            <Text style={styles.welfareTitle}>{t('cooperative_tools')}</Text>
             <Text style={styles.welfareSub}>
               Active ₹5,00,000 Health Cover • ₹10,00,000 Accidental Protection
             </Text>
@@ -152,13 +152,13 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.badgeTitleRow}>
-                <Text style={styles.sectionTitle}>New Incoming Job Requests</Text>
+                <Text style={styles.sectionTitle}>{t('incoming_job_requests')}</Text>
                 <View style={styles.countBadge}>
                   <Text style={styles.countText}>{pendingRequests.length}</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={onNavigateToJobRequests}>
-                <Text style={styles.seeAllText}>View All</Text>
+                <Text style={styles.seeAllText}>{t('view_all')}</Text>
               </TouchableOpacity>
             </View>
 
@@ -176,16 +176,16 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
         {/* Active Jobs in Progress */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Current Active Jobs ({activeJobs.length})</Text>
+            <Text style={styles.sectionTitle}>{t('active_in_progress_jobs')} ({activeJobs.length})</Text>
             <TouchableOpacity onPress={onNavigateToJobManagement}>
-              <Text style={styles.seeAllText}>Manage</Text>
+              <Text style={styles.seeAllText}>{t('view_details')}</Text>
             </TouchableOpacity>
           </View>
 
           {activeJobs.length === 0 ? (
             <View style={styles.emptyCard}>
               <Ionicons name="checkmark-circle-outline" size={36} color={colors.primary} />
-              <Text style={styles.emptyTitle}>No Jobs Currently In Progress</Text>
+              <Text style={styles.emptyTitle}>{t('no_active_jobs')}</Text>
               <Text style={styles.emptySub}>
                 Accept incoming requests above to dispatch and commence service.
               </Text>

@@ -6,9 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
-import { Header, LanguageModal, RoleSwitcherModal } from '../../components/common';
+import { Header, LanguageModal } from '../../components/common';
 import { Avatar, Badge, Button } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -26,20 +27,38 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToVerification,
 }) => {
   const { user, role, logout } = useAuth();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const [langModalVisible, setLangModalVisible] = useState(false);
-  const [roleModalVisible, setRoleModalVisible] = useState(false);
 
-  const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: logout },
+  const handleLogout = async () => {
+    if (Platform.OS === 'web') {
+      try {
+        await logout();
+      } catch (e) {
+        console.warn('Logout error:', e);
+      }
+      return;
+    }
+    Alert.alert(t('logout'), 'Are you sure you want to sign out?', [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('logout'), style: 'destructive', onPress: logout },
     ]);
+  };
+
+  const getRoleBadgeLabel = () => {
+    switch (role) {
+      case 'worker':
+        return t('worker');
+      case 'admin':
+        return t('admin');
+      default:
+        return t('customer');
+    }
   };
 
   return (
     <View style={styles.container}>
-      <Header title="My Profile & Settings" />
+      <Header title={t('nav_profile')} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Profile Card */}
@@ -47,10 +66,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <Avatar name={user?.name || 'Sahakar Member'} url={user?.avatarUrl} size={64} showVerifiedBadge />
           <View style={styles.profileInfo}>
             <View style={styles.nameBadgeRow}>
-              <Text style={styles.userName}>{user?.name || 'Ramesh Sharma'}</Text>
+              <Text style={styles.userName}>{user?.name || 'Sahakar Member'}</Text>
               <Badge
                 variant="role"
-                label={role === 'customer' ? 'Customer' : role === 'worker' ? 'Worker' : 'Admin'}
+                label={getRoleBadgeLabel()}
                 style={{
                   backgroundColor:
                     role === 'customer'
@@ -61,31 +80,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 }}
               />
             </View>
-            <Text style={styles.userPhone}>{user?.phone}</Text>
+            <Text style={styles.userPhone}>{user?.phone || 'Mobile not registered'}</Text>
             <Text style={styles.userEmail}>{user?.email}</Text>
-            <Text style={styles.userCity}>📍 {user?.address}, {user?.city}</Text>
+            <Text style={styles.userCity}>📍 {user?.address ? `${user.address}, ` : ''}{user?.city || 'Bengaluru'}</Text>
           </View>
         </View>
-
-        {/* Evaluator Role Switcher Tile */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => setRoleModalVisible(true)}
-          style={styles.switchRoleCard}
-        >
-          <View style={styles.switchRoleLeft}>
-            <View style={styles.switchRoleIcon}>
-              <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
-            </View>
-            <View>
-              <Text style={styles.switchRoleTitle}>Switch Application Persona</Text>
-              <Text style={styles.switchRoleSub}>
-                Currently active: <Text style={{ fontWeight: '700' }}>{role.toUpperCase()}</Text> (Tap to test Customer / Worker / Admin)
-              </Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.primary} />
-        </TouchableOpacity>
 
         {/* Role-Specific Shortcuts */}
         {role === 'worker' && (
@@ -114,7 +113,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
           <TouchableOpacity onPress={() => setLangModalVisible(true)} style={styles.menuItem}>
             <Ionicons name="language-outline" size={20} color={colors.textSecondary} />
-            <Text style={styles.menuItemText}>Language / भाषा</Text>
+            <Text style={styles.menuItemText}>{t('language')}</Text>
             <Text style={styles.menuItemValue}>{language.toUpperCase()}</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
@@ -137,7 +136,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
         {/* Sign Out Button */}
         <Button
-          title="Sign Out"
+          title={t('logout')}
           icon="log-out-outline"
           onPress={handleLogout}
           variant="outline"
@@ -150,7 +149,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         {/* Cooperative Federation Tag */}
         <View style={styles.footerNote}>
           <Text style={styles.footerNoteText}>
-            Sahakar Sathi v1.0 • Supported by Ministry of Cooperation & Labour Federations
+            Sahakar Sathi • Supported by Ministry of Cooperation & Labour Federations
           </Text>
         </View>
       </ScrollView>
@@ -158,10 +157,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       <LanguageModal
         visible={langModalVisible}
         onClose={() => setLangModalVisible(false)}
-      />
-      <RoleSwitcherModal
-        visible={roleModalVisible}
-        onClose={() => setRoleModalVisible(false)}
       />
     </View>
   );
@@ -212,41 +207,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
     marginTop: 4,
-  },
-  switchRoleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.primaryLight,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: 'rgba(13, 122, 95, 0.25)',
-  },
-  switchRoleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  switchRoleIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  switchRoleTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.primaryDark,
-  },
-  switchRoleSub: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 1,
   },
   menuGroup: {
     backgroundColor: colors.surface,
