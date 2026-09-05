@@ -175,6 +175,100 @@ export const BookingProvider: React.FC<{
   };
 
   // --------------------------------------------------
+  // ACCEPT JOB
+  // --------------------------------------------------
+
+  const acceptJob = async (
+    bookingId: string
+  ): Promise<Booking | null> => {
+    return updateStatus(
+      bookingId,
+      'accepted',
+      'Job accepted by cooperative worker'
+    );
+  };
+
+  // --------------------------------------------------
+  // SIMPLE REJECT
+  // --------------------------------------------------
+
+  const rejectJob = async (
+    bookingId: string
+  ): Promise<Booking | null> => {
+    return updateStatus(
+      bookingId,
+      'cancelled',
+      'Job declined by cooperative worker'
+    );
+  };
+
+  // --------------------------------------------------
+  // REJECT JOB WITH REASON
+  // --------------------------------------------------
+
+  const rejectJobWithReason = async (
+    bookingId: string,
+    reason: string
+  ): Promise<Booking | null> => {
+    const updated = await bookingService.rejectJobWithReason(
+      bookingId,
+      reason
+    );
+
+    if (updated) {
+      setBookings((prev) =>
+        prev.map((booking) =>
+          booking.id === bookingId ? updated : booking
+        )
+      );
+
+      await notificationService.sendNotification({
+        recipientRole: 'customer',
+        recipientId: updated.customerId,
+        title: 'Booking Cancelled',
+        body: `Your booking for ${updated.serviceTitle} was cancelled or declined.`,
+        type: 'booking',
+        relatedId: updated.id,
+      });
+    }
+
+    return updated;
+  };
+
+  // --------------------------------------------------
+  // CANCEL BOOKING
+  // --------------------------------------------------
+
+  const cancelBooking = async (
+    bookingId: string,
+    reason: string
+  ): Promise<Booking | null> => {
+    const updated = await bookingService.cancelBooking(
+      bookingId,
+      reason
+    );
+
+    if (updated) {
+      setBookings((prev) =>
+        prev.map((booking) =>
+          booking.id === bookingId ? updated : booking
+        )
+      );
+
+      await notificationService.sendNotification({
+        recipientRole: 'customer',
+        recipientId: updated.customerId,
+        title: 'Booking Cancelled',
+        body: `Your booking for ${updated.serviceTitle} was cancelled or declined.`,
+        type: 'booking',
+        relatedId: updated.id,
+      });
+    }
+
+    return updated;
+  };
+
+  // --------------------------------------------------
   // GENERATE COMPLETION OTP
   // --------------------------------------------------
 
