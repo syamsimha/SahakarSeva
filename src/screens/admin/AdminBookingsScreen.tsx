@@ -735,17 +735,14 @@ export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack
 
                     {showReassignDropdown && (
                       <View style={styles.reassignBox}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <Text style={styles.reassignTitle}>Reassign to Qualified Guild Artisan:</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <Text style={styles.reassignTitle}>Select Qualified Artisan to Assign:</Text>
                           <View style={styles.reassignTradeTag}>
                             <Text style={styles.reassignTradeTagText}>
                               Trade: {getRequiredTradeLabel(selectedBooking.categoryId, selectedBooking.serviceTitle)}
                             </Text>
                           </View>
                         </View>
-                        <Text style={styles.reassignSubNotice}>
-                          Policy: Workers must match the required trade and have 0 ongoing assignments.
-                        </Text>
 
                         {(() => {
                           if (verifiedWorkers.length === 0) {
@@ -1211,11 +1208,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
     color: colors.primaryDark,
-  },
-  reassignSubNotice: {
-    fontSize: 10,
-    color: colors.textMuted,
-    marginBottom: 6,
   },
   techChoiceRow: {
     flexDirection: 'row',

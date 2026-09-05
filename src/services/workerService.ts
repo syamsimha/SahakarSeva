@@ -145,15 +145,15 @@ class WorkerService {
           documents: data.documents && data.documents.length > 0 ? data.documents : [
             {
               id: `doc-${Date.now()}-1`,
-              name: 'Aadhaar Identity Verification',
+              name: 'ID Proof (Aadhaar Card)',
               type: 'aadhaar',
               status: 'verified',
               uploadedAt: now,
             },
             {
               id: `doc-${Date.now()}-2`,
-              name: 'Cooperative Society Trade Endorsement',
-              type: 'society_endorsement',
+              name: `Skill Certificate (${data.primarySkill?.trim() || 'Trade Qualification'})`,
+              type: 'skill_certificate',
               status: 'verified',
               uploadedAt: now,
             },

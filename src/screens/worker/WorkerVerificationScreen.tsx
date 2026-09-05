@@ -17,12 +17,12 @@ export const WorkerVerificationScreen: React.FC<WorkerVerificationScreenProps> =
 
   const status = worker?.verificationStatus || 'verified';
 
-  const documents = worker?.documents || [
-    { id: '1', name: 'Government Aadhaar ID', type: 'aadhaar', status: 'verified', uploadedAt: '2023-08-10' },
-    { id: '2', name: 'ITI National Skill Certificate', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-08-11' },
-    { id: '3', name: 'Police Verification Clearance', type: 'police_verification', status: 'verified', uploadedAt: '2023-08-12' },
-    { id: '4', name: 'Cooperative Society Executive Letter', type: 'society_endorsement', status: 'verified', uploadedAt: '2023-08-14' },
+  const rawDocs = worker?.documents || [
+    { id: '1', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'verified', uploadedAt: '2023-08-10' },
+    { id: '2', name: 'Skill Certificate (ITI / Trade Qualification)', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-08-11' },
   ];
+
+  const documents = rawDocs.filter((d) => d.type === 'aadhaar' || d.type === 'skill_certificate');
 
   return (
     <View style={styles.container}>
@@ -47,14 +47,14 @@ export const WorkerVerificationScreen: React.FC<WorkerVerificationScreenProps> =
           </Text>
           <Text style={styles.heroSubtitle}>
             {status === 'verified'
-              ? 'Your identity, skill trade diploma, and police record are fully authenticated by your cooperative society.'
+              ? 'Your ID proof and skill qualification certificate are fully authenticated by your cooperative society.'
               : 'Our cooperative registrar is currently examining your uploaded credentials.'}
           </Text>
           <Badge status={status} style={{ marginTop: spacing.sm }} />
         </View>
 
         {/* Verification Checklist */}
-        <Text style={styles.sectionTitle}>Submitted Document Credentials</Text>
+        <Text style={styles.sectionTitle}>Submitted Document Credentials (2)</Text>
         <View style={styles.docsList}>
           {documents.map((doc) => (
             <View key={doc.id} style={styles.docCard}>
@@ -63,11 +63,7 @@ export const WorkerVerificationScreen: React.FC<WorkerVerificationScreenProps> =
                   name={
                     doc.type === 'aadhaar'
                       ? 'id-card-outline'
-                      : doc.type === 'skill_certificate'
-                      ? 'ribbon-outline'
-                      : doc.type === 'police_verification'
-                      ? 'shield-outline'
-                      : 'document-text-outline'
+                      : 'ribbon-outline'
                   }
                   size={24}
                   color={colors.primary}

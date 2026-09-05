@@ -190,27 +190,29 @@ export const WorkerVerificationAdminScreen: React.FC<WorkerVerificationAdminScre
             </View>
 
             {/* Submitted Documents Inspection Box */}
-            <Text style={styles.docsHeader}>Uploaded Verification Proofs (Tap to Inspect):</Text>
+            <Text style={styles.docsHeader}>Uploaded Verification Proofs (ID Proof & Skill Certificate):</Text>
             <View style={styles.docsGrid}>
-              {item.documents.map((doc) => (
-                <TouchableOpacity
-                  key={doc.id}
-                  style={styles.docItem}
-                  onPress={() => {
-                    setSelectedDoc({ doc, worker: item });
-                    setDocValidated(doc.status === 'verified');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={doc.status === 'verified' ? 'checkmark-circle' : 'document-attach'}
-                    size={16}
-                    color={doc.status === 'verified' ? colors.success : colors.primary}
-                  />
-                  <Text style={styles.docName} numberOfLines={1}>{doc.name}</Text>
-                  <Ionicons name="eye-outline" size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-              ))}
+              {item.documents
+                .filter((doc) => doc.type === 'aadhaar' || doc.type === 'skill_certificate')
+                .map((doc) => (
+                  <TouchableOpacity
+                    key={doc.id}
+                    style={styles.docItem}
+                    onPress={() => {
+                      setSelectedDoc({ doc, worker: item });
+                      setDocValidated(doc.status === 'verified');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={doc.status === 'verified' ? 'checkmark-circle' : 'document-attach'}
+                      size={16}
+                      color={doc.status === 'verified' ? colors.success : colors.primary}
+                    />
+                    <Text style={styles.docName} numberOfLines={1}>{doc.name}</Text>
+                    <Ionicons name="eye-outline" size={16} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ))}
             </View>
 
             {/* About note */}

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Modal,
-  TextInput,
   ScrollView,
   Linking,
 } from 'react-native';
@@ -24,16 +23,6 @@ interface JobDispatchSectionProps {
   onClearPreselectedWorker?: () => void;
 }
 
-const AVAILABLE_SKILLS = [
-  'Electrician',
-  'Plumbing',
-  'Carpentry',
-  'Painting',
-  'Cleaning',
-  'Appliance Repair',
-  'Gardening',
-];
-
 export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
   isAdmin,
   onNavigateToBookings,
@@ -47,9 +36,6 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
   const [selectedBookingDetail, setSelectedBookingDetail] = useState<Booking | null>(null);
 
   const [verifiedWorkers, setVerifiedWorkers] = useState<WorkerProfile[]>([]);
-  const [assignSearch, setAssignSearch] = useState('');
-  const [assignSkillFilter, setAssignSkillFilter] = useState('all');
-  const [workerToConfirm, setWorkerToConfirm] = useState<WorkerProfile | null>(null);
   const [isAssigning, setIsAssigning] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -93,16 +79,12 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
 
       if (matchingJob) {
         setSelectedJob(matchingJob);
-        setWorkerToConfirm(worker);
-        setAssignSkillFilter('matched');
         setAssignModalVisible(true);
         showToast(`Matched unassigned ${matchingJob.serviceTitle} job for ${worker.name} (${worker.primarySkill})`);
       } else {
         const anyUnassigned = bookings.find((b) => !b.workerId || b.status === 'requested');
         if (anyUnassigned) {
           setSelectedJob(anyUnassigned);
-          setWorkerToConfirm(worker);
-          setAssignSkillFilter('all');
           setAssignModalVisible(true);
         } else {
           showToast(`No unassigned jobs currently pending for trade: ${worker.primarySkill}`);
@@ -128,47 +110,43 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
       return;
     }
     setSelectedJob(job);
-    setWorkerToConfirm(null);
-    setAssignSearch('');
-    setAssignSkillFilter('matched'); // Default to Trade-Matched filter for accuracy
     setAssignModalVisible(true);
   };
 
-  const handleConfirmAssignment = async () => {
+  const handleDirectAssign = async (worker: WorkerProfile) => {
     if (!isAdmin) {
       showToast('Dispatch failed: Admin authorization required.');
       return;
     }
-    if (!selectedJob || !workerToConfirm) return;
+    if (!selectedJob) return;
 
     // Check concurrency before attempting
-    const activeJob = getWorkerActiveJob(workerToConfirm.id, bookings, selectedJob.id);
+    const activeJob = getWorkerActiveJob(worker.id, bookings, selectedJob.id);
     if (activeJob) {
       showToast(
-        `Assignment Blocked: ${workerToConfirm.name} already has active job #${activeJob.bookingCode}. A worker can only be assigned to one work at a time.`
+        `Unavailable: ${worker.name} already has active job #${activeJob.bookingCode}. A worker can only be assigned to one work at a time.`
       );
       return;
     }
 
     // Check trade matching before attempting
-    if (!isTradeMatching(selectedJob.categoryId, selectedJob.serviceTitle, workerToConfirm)) {
+    if (!isTradeMatching(selectedJob.categoryId, selectedJob.serviceTitle, worker)) {
       showToast(
-        `Skill Mismatch: ${selectedJob.serviceTitle} requires ${selectedJob.categoryId || 'trade'} specialist. ${workerToConfirm.name} is certified in ${workerToConfirm.primarySkill}.`
+        `Trade Mismatch: ${selectedJob.serviceTitle} requires a certified specialist. ${worker.name} is certified in ${worker.primarySkill}.`
       );
       return;
     }
 
     setIsAssigning(true);
     try {
-      await assignJobToWorker(selectedJob.id, workerToConfirm);
-      const workerName = workerToConfirm.name;
+      await assignJobToWorker(selectedJob.id, worker);
+      const workerName = worker.name;
       const jobTitle = selectedJob.serviceTitle;
       setAssignModalVisible(false);
       setSelectedJob(null);
-      setWorkerToConfirm(null);
-      showToast(`Job "${jobTitle}" successfully dispatched to ${workerName} (${workerToConfirm.primarySkill})!`);
+      showToast(`Job "${jobTitle}" successfully assigned to ${workerName} (${worker.primarySkill})!`);
     } catch (err: any) {
-      showToast(err.message || 'Failed to dispatch job');
+      showToast(err.message || 'Failed to assign job');
     } finally {
       setIsAssigning(false);
     }
@@ -376,7 +354,7 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* ASSIGN JOB TO VERIFIED WORKER MODAL (ADMIN ONLY)          */}
+      {/* ASSIGN JOB TO WORKER MODAL (ADMIN DIRECT ASSIGN)          */}
       {/* ========================================================= */}
       <Modal
         visible={assignModalVisible}
@@ -385,11 +363,11 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
         onRequestClose={() => setAssignModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { maxHeight: '92%' }]}>
+          <View style={[styles.modalCard, { maxHeight: '90%' }]}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.modalTitle}>Assign Job to Verified Worker</Text>
-                <Text style={styles.modalSub}>Verified guild members only are eligible for job assignment</Text>
+                <Text style={styles.modalTitle}>Assign Job to Worker</Text>
+                <Text style={styles.modalSub}>Select a qualified worker to assign this job</Text>
               </View>
               <TouchableOpacity onPress={() => setAssignModalVisible(false)}>
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
@@ -426,176 +404,23 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
                   </View>
                 </View>
 
-                {/* Cooperative Policy Notice */}
-                <View style={styles.rulesNoticeBox}>
-                  <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
-                  <View style={{ flex: 1, marginLeft: 6 }}>
-                    <Text style={styles.rulesNoticeTitle}>Cooperative Allocation Safeguards</Text>
-                    <Text style={styles.rulesNoticeText}>
-                      • <Text style={{ fontWeight: '700' }}>Profession Guarantee:</Text> Jobs are restricted to certified {getRequiredTradeLabel(selectedJob.categoryId, selectedJob.serviceTitle)} artisans.
-                    </Text>
-                    <Text style={styles.rulesNoticeText}>
-                      • <Text style={{ fontWeight: '700' }}>Single Job Limit:</Text> Workers can only be assigned to 1 active job at a time.
-                    </Text>
-                  </View>
-                </View>
+                {/* Available Workers List */}
+                <Text style={styles.filterSectionHeading}>
+                  Select Worker to Assign
+                </Text>
 
-                {/* Worker Filtering */}
                 {(() => {
-                  const requiredTrade = getRequiredTradeLabel(selectedJob.categoryId, selectedJob.serviceTitle);
-                  const matchedWorkers = verifiedWorkers.filter((w) =>
-                    isTradeMatching(selectedJob.categoryId, selectedJob.serviceTitle, w)
-                  );
-                  const availableMatchedWorkers = matchedWorkers.filter(
-                    (w) => !getWorkerActiveJob(w.id, bookings, selectedJob.id)
-                  );
-
-                  return (
-                    <>
-                      <Text style={styles.filterSectionHeading}>
-                        Select Verified Artisan ({availableMatchedWorkers.length} Available {requiredTrade}s)
-                      </Text>
-
-                      <TextInput
-                        value={assignSearch}
-                        onChangeText={setAssignSearch}
-                        placeholder="Search by worker name, location, rating..."
-                        placeholderTextColor={colors.textMuted}
-                        style={styles.modalSearchInput}
-                      />
-
-                      <View style={styles.modalChipRow}>
-                        <TouchableOpacity
-                          style={[styles.miniChip, assignSkillFilter === 'matched' && styles.miniChipActive]}
-                          onPress={() => setAssignSkillFilter('matched')}
-                        >
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={11}
-                            color={assignSkillFilter === 'matched' ? '#FFF' : colors.primary}
-                          />
-                          <Text style={[styles.miniChipText, assignSkillFilter === 'matched' && styles.miniChipTextActive]}>
-                            Trade Matched ({matchedWorkers.length})
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.miniChip, assignSkillFilter === 'available' && styles.miniChipActive]}
-                          onPress={() => setAssignSkillFilter('available')}
-                        >
-                          <Ionicons
-                            name="radio-button-on"
-                            size={11}
-                            color={assignSkillFilter === 'available' ? '#FFF' : colors.success}
-                          />
-                          <Text style={[styles.miniChipText, assignSkillFilter === 'available' && styles.miniChipTextActive]}>
-                            Available Only ({verifiedWorkers.filter((w) => !getWorkerActiveJob(w.id, bookings, selectedJob.id)).length})
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.miniChip, assignSkillFilter === 'all' && styles.miniChipActive]}
-                          onPress={() => setAssignSkillFilter('all')}
-                        >
-                          <Text style={[styles.miniChipText, assignSkillFilter === 'all' && styles.miniChipTextActive]}>
-                            All ({verifiedWorkers.length})
-                          </Text>
-                        </TouchableOpacity>
-
-                        {AVAILABLE_SKILLS.map((sk) => (
-                          <TouchableOpacity
-                            key={sk}
-                            style={[styles.miniChip, assignSkillFilter.toLowerCase() === sk.toLowerCase() && styles.miniChipActive]}
-                            onPress={() => setAssignSkillFilter(sk.toLowerCase())}
-                          >
-                            <Text style={[styles.miniChipText, assignSkillFilter.toLowerCase() === sk.toLowerCase() && styles.miniChipTextActive]}>
-                              {sk}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </>
-                  );
-                })()}
-
-                {/* Confirmation Box (when worker is selected) */}
-                {workerToConfirm && (
-                  <View style={styles.confirmBox}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Ionicons name="checkmark-circle" size={18} color={colors.primaryDark} />
-                      <Text style={styles.confirmTitle}>Confirm Official Work Assignment</Text>
-                    </View>
-                    <Text style={styles.confirmText}>
-                      Assign <Text style={{ fontWeight: '700' }}>{workerToConfirm.name}</Text> (Trade: {workerToConfirm.primarySkill}) to {selectedJob.serviceTitle} for customer {selectedJob.customerName}?
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
-                      <Button
-                        title="Cancel"
-                        variant="outline"
-                        size="sm"
-                        onPress={() => setWorkerToConfirm(null)}
-                        style={{ flex: 1 }}
-                      />
-                      <Button
-                        title={isAssigning ? 'Dispatching...' : 'Confirm Assignment'}
-                        variant="primary"
-                        size="sm"
-                        icon="checkmark-circle"
-                        onPress={handleConfirmAssignment}
-                        disabled={isAssigning}
-                        style={{ flex: 1.5 }}
-                      />
-                    </View>
-                  </View>
-                )}
-
-                {/* Verified Workers Roster */}
-                {(() => {
-                  const filtered = verifiedWorkers.filter((w) => {
-                    const matchesTrade = isTradeMatching(selectedJob.categoryId, selectedJob.serviceTitle, w);
-                    const isBusy = Boolean(getWorkerActiveJob(w.id, bookings, selectedJob.id));
-
-                    if (assignSkillFilter === 'matched') {
-                      if (!matchesTrade) return false;
-                    } else if (assignSkillFilter === 'available') {
-                      if (isBusy) return false;
-                    } else if (assignSkillFilter !== 'all') {
-                      const match =
-                        w.primarySkill.toLowerCase().includes(assignSkillFilter) ||
-                        w.allSkills.some((s) => s.toLowerCase().includes(assignSkillFilter));
-                      if (!match) return false;
-                    }
-
-                    if (assignSearch.trim()) {
-                      const q = assignSearch.toLowerCase();
-                      const match =
-                        w.name.toLowerCase().includes(q) ||
-                        w.primarySkill.toLowerCase().includes(q) ||
-                        w.serviceArea.toLowerCase().includes(q) ||
-                        w.cooperativeName.toLowerCase().includes(q);
-                      if (!match) return false;
-                    }
-                    return true;
-                  });
-
-                  if (filtered.length === 0) {
+                  if (verifiedWorkers.length === 0) {
                     return (
                       <View style={styles.emptyCard}>
                         <Ionicons name="shield-outline" size={24} color={colors.textMuted} />
-                        <Text style={styles.emptyText}>No verified workers match this filter.</Text>
-                        <Button
-                          title="View All Trades"
-                          variant="outline"
-                          size="sm"
-                          onPress={() => setAssignSkillFilter('all')}
-                          style={{ marginTop: 8 }}
-                        />
+                        <Text style={styles.emptyText}>No registered workers found.</Text>
                       </View>
                     );
                   }
 
-                  // Sort so eligible available workers appear at the very top
-                  const sorted = [...filtered].sort((a, b) => {
+                  // Sort so eligible available workers appear at the top
+                  const sorted = [...verifiedWorkers].sort((a, b) => {
                     const aMatches = isTradeMatching(selectedJob.categoryId, selectedJob.serviceTitle, a);
                     const bMatches = isTradeMatching(selectedJob.categoryId, selectedJob.serviceTitle, b);
                     const aBusy = Boolean(getWorkerActiveJob(a.id, bookings, selectedJob.id));
@@ -607,49 +432,29 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
                   });
 
                   return sorted.map((w) => {
-                    const isSelected = workerToConfirm?.id === w.id;
                     const matchesTrade = isTradeMatching(selectedJob.categoryId, selectedJob.serviceTitle, w);
                     const activeJob = getWorkerActiveJob(w.id, bookings, selectedJob.id);
                     const isBusy = Boolean(activeJob);
                     const isEligible = matchesTrade && !isBusy;
 
-                    const handleWorkerCardPress = () => {
-                      if (isBusy) {
-                        showToast(
-                          `Unavailable: ${w.name} is working on active job #${activeJob?.bookingCode}. Workers can only be assigned to one work at a time.`
-                        );
-                        return;
-                      }
-                      if (!matchesTrade) {
-                        showToast(
-                          `Skill Mismatch: This job requires a ${selectedJob.serviceTitle} specialist. ${w.name} is certified as "${w.primarySkill}".`
-                        );
-                        return;
-                      }
-                      setWorkerToConfirm(w);
-                    };
-
                     return (
-                      <TouchableOpacity
+                      <View
                         key={w.id}
-                        activeOpacity={0.8}
                         style={[
                           styles.workerAssignCard,
-                          isSelected && styles.workerAssignCardSelected,
                           isEligible && styles.workerAssignCardEligible,
                           isBusy && styles.workerAssignCardBusy,
                           !matchesTrade && !isBusy && styles.workerAssignCardMismatched,
                         ]}
-                        onPress={handleWorkerCardPress}
                       >
-                        <Avatar name={w.name} url={w.avatarUrl} size={44} showVerifiedBadge />
+                        <Avatar name={w.name} url={w.avatarUrl} size={42} showVerifiedBadge />
                         <View style={{ flex: 1, marginLeft: spacing.sm }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                             <Text style={styles.assignWorkerName}>{w.name}</Text>
                             {isEligible && (
                               <View style={styles.eligibleBadge}>
                                 <Ionicons name="checkmark-circle" size={11} color={colors.success} />
-                                <Text style={styles.eligibleBadgeText}>Available & Qualified</Text>
+                                <Text style={styles.eligibleBadgeText}>Available</Text>
                               </View>
                             )}
                             {isBusy && (
@@ -670,38 +475,27 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
                             {w.primarySkill} • {w.experienceYears} yrs exp
                           </Text>
 
-                          {/* Contextual Status / Guidance Note */}
-                          {isBusy && (
-                            <Text style={styles.busyNoticeText}>
-                              ⚠️ Currently on #{activeJob?.bookingCode} ({activeJob?.serviceTitle}). Max 1 active job allowed.
-                            </Text>
-                          )}
-                          {!matchesTrade && !isBusy && (
-                            <Text style={styles.mismatchNoticeText}>
-                              ⚠️ Registered trade "{w.primarySkill}" does not match required {getRequiredTradeLabel(selectedJob.categoryId, selectedJob.serviceTitle)} service.
-                            </Text>
-                          )}
-
                           <Text style={styles.assignWorkerMeta}>
-                            {w.serviceArea} • ₹{w.baseRate}/hr • ⭐ {w.rating > 0 ? w.rating.toFixed(1) : '5.0'} ({w.completedJobsCount} jobs)
+                            {w.serviceArea} • ₹{w.baseRate}/hr • ⭐ {w.rating > 0 ? w.rating.toFixed(1) : '5.0'}
                           </Text>
                         </View>
 
                         <View style={{ marginLeft: 8 }}>
                           {isEligible ? (
                             <Button
-                              title={isSelected ? 'Selected' : 'Assign'}
+                              title={isAssigning ? '...' : 'Assign'}
                               icon="checkmark"
-                              variant={isSelected ? 'primary' : 'outline'}
+                              variant="primary"
                               size="sm"
-                              onPress={() => setWorkerToConfirm(w)}
+                              disabled={isAssigning}
+                              onPress={() => handleDirectAssign(w)}
                             />
                           ) : isBusy ? (
                             <TouchableOpacity
                               style={styles.disabledAssignBtn}
                               onPress={() =>
                                 showToast(
-                                  `Unavailable: ${w.name} is currently working on active job #${activeJob?.bookingCode}. Workers can only be assigned to one work at a time.`
+                                  `Unavailable: ${w.name} is on job #${activeJob?.bookingCode}. Only 1 active job allowed per worker.`
                                 )
                               }
                             >
@@ -712,7 +506,7 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
                               style={styles.disabledAssignBtn}
                               onPress={() =>
                                 showToast(
-                                  `Skill Mismatch: ${w.name} (${w.primarySkill}) is not certified for ${selectedJob.serviceTitle}.`
+                                  `Skill Mismatch: ${w.name} (${w.primarySkill}) is not certified for this trade.`
                                 )
                               }
                             >
@@ -720,7 +514,7 @@ export const JobDispatchSection: React.FC<JobDispatchSectionProps> = ({
                             </TouchableOpacity>
                           )}
                         </View>
-                      </TouchableOpacity>
+                      </View>
                     );
                   });
                 })()}
@@ -1158,43 +952,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: 4,
   },
-  modalSearchInput: {
-    backgroundColor: colors.background,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    fontSize: 12,
-    color: colors.text,
-  },
-  modalChipRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginVertical: spacing.xs,
-    flexWrap: 'wrap',
-  },
-  miniChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: borderRadius.round,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  miniChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  miniChipText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  miniChipTextActive: {
-    color: '#FFF',
-    fontWeight: '700',
-  },
   tradeRequiredBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1209,46 +966,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primaryDark,
   },
-  rulesNoticeBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#F0FDF4',
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  rulesNoticeTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#166534',
-    marginBottom: 2,
-  },
-  rulesNoticeText: {
-    fontSize: 10,
-    color: '#14532D',
-    lineHeight: 14,
-  },
-  confirmBox: {
-    backgroundColor: colors.primaryLight,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    marginVertical: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  confirmTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.primaryDark,
-  },
-  confirmText: {
-    fontSize: 11,
-    color: colors.text,
-    marginTop: 4,
-    lineHeight: 15,
-  },
   workerAssignCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1258,10 +975,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  workerAssignCardSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight,
   },
   workerAssignCardEligible: {
     borderColor: '#86EFAC',
@@ -1333,18 +1046,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
     color: colors.danger,
-  },
-  busyNoticeText: {
-    fontSize: 10,
-    color: '#B45309',
-    marginTop: 2,
-    fontWeight: '500',
-  },
-  mismatchNoticeText: {
-    fontSize: 10,
-    color: colors.danger,
-    marginTop: 2,
-    fontWeight: '500',
   },
   disabledAssignBtn: {
     paddingHorizontal: 10,

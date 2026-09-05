@@ -60,31 +60,17 @@ export const mockWorkerUser: WorkerProfile = {
   documents: [
     {
       id: 'doc-1',
-      name: 'Aadhaar Card',
+      name: 'ID Proof (Aadhaar Card)',
       type: 'aadhaar',
       status: 'verified',
       uploadedAt: '2023-08-10',
     },
     {
       id: 'doc-2',
-      name: 'ITI Electrical Certificate',
+      name: 'Skill Certificate (ITI Electrical Wireman)',
       type: 'skill_certificate',
       status: 'verified',
       uploadedAt: '2023-08-11',
-    },
-    {
-      id: 'doc-3',
-      name: 'Police Clearance Record',
-      type: 'police_verification',
-      status: 'verified',
-      uploadedAt: '2023-08-12',
-    },
-    {
-      id: 'doc-4',
-      name: 'Cooperative Society Recommendation',
-      type: 'society_endorsement',
-      status: 'verified',
-      uploadedAt: '2023-08-14',
     },
   ],
 };

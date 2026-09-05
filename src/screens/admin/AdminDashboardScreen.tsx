@@ -414,7 +414,6 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
         subtitle={federationName}
         onNotificationPress={onNavigateToNotifications}
         unreadNotificationsCount={4}
-        onProfilePress={onNavigateToProfile}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -569,7 +568,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                     </View>
                   </View>
                   <Text style={styles.candidateCoop} numberOfLines={1}>🏛️ {worker.cooperativeName}</Text>
-                  <Text style={styles.candidateDocs}>📄 {worker.documents.length} Verification Documents</Text>
+                  <Text style={styles.candidateDocs}>📄 {worker.documents.filter((d) => d.type === 'aadhaar' || d.type === 'skill_certificate').length} Documents (ID Proof & Skill)</Text>
 
                   <View style={styles.candidateActionsRow}>
                     <TouchableOpacity
@@ -974,27 +973,31 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                     <Text style={styles.workerDetailText}>• Languages: <Text style={{ fontWeight: '600' }}>{selectedPendingWorker.languages?.join(', ') || 'English, Kannada, Hindi'}</Text></Text>
                   </View>
 
-                  {/* Submitted Documents Section */}
-                  <Text style={styles.docsSectionTitle}>Submitted Credentials (Tap to Inspect Proof):</Text>
+                  {/* Submitted Documents Section (ID Proof & Skill Certificate only) */}
+                  <Text style={styles.docsSectionTitle}>Submitted Credentials (ID Proof & Skill Certificate):</Text>
                   <View style={styles.docsRow}>
-                    {selectedPendingWorker.documents.map((doc) => (
-                      <TouchableOpacity
-                        key={doc.id}
-                        style={styles.docItemCard}
-                        onPress={() => setSelectedAuditDoc({ doc, worker: selectedPendingWorker })}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="document-text" size={18} color={colors.primary} />
-                        <View style={{ flex: 1, marginLeft: 8 }}>
-                          <Text style={styles.docItemName} numberOfLines={1}>{doc.name}</Text>
-                          <Text style={styles.docItemType}>Type: {doc.type.toUpperCase()}</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Badge variant={doc.status === 'verified' ? 'verified' : 'status'} label={doc.status === 'verified' ? 'VERIFIED' : 'PROOF'} />
-                          <Ionicons name="eye-outline" size={16} color={colors.textSecondary} />
-                        </View>
-                      </TouchableOpacity>
-                    ))}
+                    {selectedPendingWorker.documents
+                      .filter((doc) => doc.type === 'aadhaar' || doc.type === 'skill_certificate')
+                      .map((doc) => (
+                        <TouchableOpacity
+                          key={doc.id}
+                          style={styles.docItemCard}
+                          onPress={() => setSelectedAuditDoc({ doc, worker: selectedPendingWorker })}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="document-text" size={18} color={colors.primary} />
+                          <View style={{ flex: 1, marginLeft: 8 }}>
+                            <Text style={styles.docItemName} numberOfLines={1}>{doc.name}</Text>
+                            <Text style={styles.docItemType}>
+                              {doc.type === 'aadhaar' ? 'ID PROOF' : 'SKILL CERTIFICATE'}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Badge variant={doc.status === 'verified' ? 'verified' : 'status'} label={doc.status === 'verified' ? 'VERIFIED' : 'PROOF'} />
+                            <Ionicons name="eye-outline" size={16} color={colors.textSecondary} />
+                          </View>
+                        </TouchableOpacity>
+                      ))}
                   </View>
 
                   {/* Admin Decision Actions */}

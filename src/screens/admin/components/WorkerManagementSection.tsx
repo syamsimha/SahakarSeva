@@ -86,11 +86,6 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
   const [skillCertFileName, setSkillCertFileName] = useState('');
   const [skillCertUploaded, setSkillCertUploaded] = useState(false);
 
-  const [policeCertNumber, setPoliceCertNumber] = useState('');
-  const [policeStation, setPoliceStation] = useState('Dwaraka Police Station, Visakhapatnam');
-  const [policeCertFileName, setPoliceCertFileName] = useState('');
-  const [policeCertUploaded, setPoliceCertUploaded] = useState(false);
-
   const [isDeleting, setIsDeleting] = useState(false);
 
   const loadWorkers = async () => {
@@ -127,28 +122,24 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
     });
   };
 
-  // Auto-fill sample verified documentation set
+  // Auto-fill sample verified documentation set (ID Proof + Skill Certificate only)
   const handleAutoFillDocs = () => {
     const workerTag = newWorkerName.trim().toLowerCase().replace(/\s+/g, '_') || 'artisan';
     const tradeSlug = (newWorkerSkill === 'Other' ? newWorkerCustomSkill : newWorkerSkill || 'trade').toLowerCase();
     
     setAadhaarNumber(`5421 ${Math.floor(1000 + Math.random() * 9000)} ${Math.floor(1000 + Math.random() * 9000)}`);
-    setAadhaarFileName(`aadhaar_uid_${workerTag}.pdf`);
+    setAadhaarFileName(`id_proof_aadhaar_${workerTag}.pdf`);
     setAadhaarUploaded(true);
 
     setSkillCertNumber(`ITI/NCVT/2023/${Math.floor(1000 + Math.random() * 9000)}`);
-    setSkillCertFileName(`iti_${tradeSlug}_competency_cert.pdf`);
+    setSkillCertFileName(`skill_cert_${tradeSlug}_competency.pdf`);
     setSkillCertUploaded(true);
 
-    setPoliceCertNumber(`PCC/AP-POLICE/2024/${Math.floor(10000 + Math.random() * 90000)}`);
-    setPoliceCertFileName(`police_verification_clearance_${workerTag}.pdf`);
-    setPoliceCertUploaded(true);
-
-    showToast('Verified sample documents attached!');
+    showToast('Verified sample ID Proof & Skill Certificate attached!');
   };
 
   // Pick / Upload document (native web file picker or simulation)
-  const handlePickDocument = (type: 'aadhaar' | 'skill_certificate' | 'police_verification') => {
+  const handlePickDocument = (type: 'aadhaar' | 'skill_certificate') => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const input = document.createElement('input');
       input.type = 'file';
@@ -168,12 +159,6 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
             if (!skillCertNumber) {
               setSkillCertNumber(`ITI/NCVT/2023/${Math.floor(1000 + Math.random() * 9000)}`);
             }
-          } else if (type === 'police_verification') {
-            setPoliceCertFileName(file.name);
-            setPoliceCertUploaded(true);
-            if (!policeCertNumber) {
-              setPoliceCertNumber(`PCC/AP-POLICE/2024/${Math.floor(10000 + Math.random() * 90000)}`);
-            }
           }
           showToast(`Attached: ${file.name}`);
         }
@@ -182,17 +167,13 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
     } else {
       // Mobile fallback simulation
       if (type === 'aadhaar') {
-        setAadhaarFileName(`aadhaar_scan_${Date.now().toString().slice(-4)}.pdf`);
+        setAadhaarFileName(`id_proof_aadhaar_${Date.now().toString().slice(-4)}.pdf`);
         setAadhaarUploaded(true);
         if (!aadhaarNumber) setAadhaarNumber('5421 8892 1045');
       } else if (type === 'skill_certificate') {
-        setSkillCertFileName(`iti_cert_${Date.now().toString().slice(-4)}.pdf`);
+        setSkillCertFileName(`skill_cert_${Date.now().toString().slice(-4)}.pdf`);
         setSkillCertUploaded(true);
         if (!skillCertNumber) setSkillCertNumber('ITI/NCVT/2023/8814');
-      } else if (type === 'police_verification') {
-        setPoliceCertFileName(`pcc_clearance_${Date.now().toString().slice(-4)}.pdf`);
-        setPoliceCertUploaded(true);
-        if (!policeCertNumber) setPoliceCertNumber('PCC/AP-POLICE/2024/0912');
       }
       showToast('Document attached successfully!');
     }
@@ -229,8 +210,8 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
       {
         id: `doc-${Date.now()}-1`,
         name: aadhaarUploaded
-          ? `Aadhaar Card (${aadhaarNumber || '5421 8892 1045'}) - ${aadhaarFileName || 'Aadhaar_UID_Verified.pdf'}`
-          : `Aadhaar Card (${aadhaarNumber || '5421 8892 1045'})`,
+          ? `ID Proof (Aadhaar: ${aadhaarNumber || '5421 8892 1045'}) - ${aadhaarFileName || 'ID_Proof_Aadhaar.pdf'}`
+          : `ID Proof (Aadhaar: ${aadhaarNumber || '5421 8892 1045'})`,
         type: 'aadhaar',
         status: docStatus,
         uploadedAt: now,
@@ -239,29 +220,12 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
       {
         id: `doc-${Date.now()}-2`,
         name: skillCertUploaded
-          ? `ITI / Skill Certificate (${skillCertNumber || 'ITI/NCVT/2023/8814'}) - ${skillCertFileName || skillCertName}`
-          : `ITI / Trade Qualification Certificate (${finalSkill})`,
+          ? `Skill Certificate (${skillCertNumber || 'ITI/NCVT/2023/8814'}) - ${skillCertFileName || skillCertName}`
+          : `Skill Certificate (${finalSkill})`,
         type: 'skill_certificate',
         status: docStatus,
         uploadedAt: now,
         fileUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop',
-      },
-      {
-        id: `doc-${Date.now()}-3`,
-        name: policeCertUploaded
-          ? `Police Verification Certificate (${policeCertNumber || 'PCC-AP-2024'}) - ${policeStation}`
-          : `Police Verification Certificate (PCC) - ${policeStation}`,
-        type: 'police_verification',
-        status: docStatus,
-        uploadedAt: now,
-        fileUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop',
-      },
-      {
-        id: `doc-${Date.now()}-4`,
-        name: `Cooperative Guild Membership Endorsement - ${newWorkerCoop}`,
-        type: 'society_endorsement',
-        status: 'verified',
-        uploadedAt: now,
       },
     ];
 
@@ -295,10 +259,7 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
       setSkillCertNumber('');
       setSkillCertFileName('');
       setSkillCertUploaded(false);
-      setPoliceCertNumber('');
-      setPoliceCertFileName('');
-      setPoliceCertUploaded(false);
-      showToast(`Worker ${created.name} (${created.primarySkill}) registered with 3 KYC & statutory documents!`);
+      showToast(`Worker ${created.name} (${created.primarySkill}) registered with ID Proof & Skill Certificate!`);
     } catch (err: any) {
       showToast(err.message || 'Failed to register worker', 'error');
     } finally {
@@ -712,15 +673,15 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
               />
 
               {/* ========================================================= */}
-              {/* Mandatory KYC & Statutory Document Upload Section         */}
+              {/* Mandatory ID Proof & Skill Certificate Upload Section     */}
               {/* ========================================================= */}
               <View style={styles.docsSectionContainer}>
                 <View style={styles.docsSectionHeader}>
                   <Ionicons name="document-lock" size={16} color={colors.primary} />
-                  <Text style={styles.docsSectionTitle}>Mandatory KYC & Statutory Certificates</Text>
+                  <Text style={styles.docsSectionTitle}>Mandatory ID Proof & Skill Certificate</Text>
                 </View>
                 <Text style={styles.docsSectionSub}>
-                  Attach identity, trade qualification (ITI/Skill) & police verification clearance records.
+                  Attach valid identity proof (Aadhaar) and trade qualification (ITI / Skill) certificate.
                 </Text>
 
                 {/* Quick Auto-fill Sample Files Button */}
@@ -730,15 +691,15 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
                   activeOpacity={0.7}
                 >
                   <Ionicons name="flash-outline" size={13} color={colors.primary} />
-                  <Text style={styles.sampleDocsBtnText}>Attach Verified Sample Documentation Set</Text>
+                  <Text style={styles.sampleDocsBtnText}>Attach Verified Sample ID & Skill Certificate Set</Text>
                 </TouchableOpacity>
 
-                {/* 1. Aadhaar Card */}
+                {/* 1. ID Proof (Aadhaar Card) */}
                 <View style={styles.docUploadCard}>
                   <View style={styles.docCardHeader}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Ionicons name="card-outline" size={15} color={colors.primary} />
-                      <Text style={styles.docCardTitle}>1. Aadhaar Card (National UID KYC) *</Text>
+                      <Text style={styles.docCardTitle}>1. ID Proof (Aadhaar / National ID) *</Text>
                     </View>
                     {aadhaarUploaded ? (
                       <View style={styles.uploadedBadge}>
@@ -750,7 +711,7 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
                     )}
                   </View>
 
-                  <Text style={styles.docInputLabel}>12-Digit Aadhaar Number</Text>
+                  <Text style={styles.docInputLabel}>12-Digit Aadhaar / ID Number</Text>
                   <TextInput
                     value={aadhaarNumber}
                     onChangeText={setAadhaarNumber}
@@ -773,7 +734,7 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
                         color={aadhaarUploaded ? colors.success : colors.primary}
                       />
                       <Text style={[styles.uploadActionText, aadhaarUploaded && { color: colors.success }]}>
-                        {aadhaarUploaded ? (aadhaarFileName || 'Aadhaar_UID_Verified.pdf') : 'Upload Aadhaar Scan (PDF/JPG)'}
+                        {aadhaarUploaded ? (aadhaarFileName || 'ID_Proof_Aadhaar.pdf') : 'Upload ID Proof Scan (PDF/JPG)'}
                       </Text>
                     </TouchableOpacity>
                     {aadhaarUploaded && (
@@ -790,12 +751,12 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
                   </View>
                 </View>
 
-                {/* 2. ITI / Trade Skill Certificate (IPI Certificate) */}
+                {/* 2. Skill Certificate (Trade / ITI Diploma) */}
                 <View style={styles.docUploadCard}>
                   <View style={styles.docCardHeader}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Ionicons name="ribbon-outline" size={15} color={colors.accent} />
-                      <Text style={styles.docCardTitle}>2. ITI / Trade Skill Certificate (IPI) *</Text>
+                      <Text style={styles.docCardTitle}>2. Skill Certificate (Trade / ITI / IPI) *</Text>
                     </View>
                     {skillCertUploaded ? (
                       <View style={styles.uploadedBadge}>
@@ -807,7 +768,7 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
                     )}
                   </View>
 
-                  <Text style={styles.docInputLabel}>Certificate Registration / Roll No.</Text>
+                  <Text style={styles.docInputLabel}>Certificate Roll / Registration No.</Text>
                   <TextInput
                     value={skillCertNumber}
                     onChangeText={setSkillCertNumber}
@@ -837,7 +798,7 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
                         color={skillCertUploaded ? colors.success : colors.accent}
                       />
                       <Text style={[styles.uploadActionText, skillCertUploaded && { color: colors.success }]}>
-                        {skillCertUploaded ? (skillCertFileName || 'ITI_Trade_Skill_Certificate.pdf') : 'Upload ITI / Skill Certificate (PDF/JPG)'}
+                        {skillCertUploaded ? (skillCertFileName || 'Trade_Skill_Certificate.pdf') : 'Upload Skill Certificate (PDF/JPG)'}
                       </Text>
                     </TouchableOpacity>
                     {skillCertUploaded && (
@@ -846,70 +807,6 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
                         onPress={() => {
                           setSkillCertUploaded(false);
                           setSkillCertFileName('');
-                        }}
-                      >
-                        <Ionicons name="close-circle" size={18} color={colors.danger} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-
-                {/* 3. Police Verification Certificate */}
-                <View style={styles.docUploadCard}>
-                  <View style={styles.docCardHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Ionicons name="shield-checkmark-outline" size={15} color={colors.info} />
-                      <Text style={styles.docCardTitle}>3. Police Verification Certificate (PCC) *</Text>
-                    </View>
-                    {policeCertUploaded ? (
-                      <View style={styles.uploadedBadge}>
-                        <Ionicons name="checkmark-circle" size={12} color={colors.success} />
-                        <Text style={styles.uploadedBadgeText}>Attached</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.requiredTag}>Required</Text>
-                    )}
-                  </View>
-
-                  <Text style={styles.docInputLabel}>Police Clearance Ack / Ref ID</Text>
-                  <TextInput
-                    value={policeCertNumber}
-                    onChangeText={setPoliceCertNumber}
-                    placeholder="e.g. PCC/AP-POLICE/2024/0912"
-                    placeholderTextColor={colors.textMuted}
-                    style={styles.docMiniInput}
-                  />
-
-                  <Text style={styles.docInputLabel}>Issuing Police Station / Authority</Text>
-                  <TextInput
-                    value={policeStation}
-                    onChangeText={setPoliceStation}
-                    placeholder="e.g. Dwaraka Police Station, Visakhapatnam"
-                    placeholderTextColor={colors.textMuted}
-                    style={styles.docMiniInput}
-                  />
-
-                  <View style={styles.docAttachRow}>
-                    <TouchableOpacity
-                      style={[styles.uploadActionBtn, policeCertUploaded && styles.uploadActionBtnDone]}
-                      onPress={() => handlePickDocument('police_verification')}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={policeCertUploaded ? 'checkmark-circle' : 'cloud-upload-outline'}
-                        size={14}
-                        color={policeCertUploaded ? colors.success : colors.info}
-                      />
-                      <Text style={[styles.uploadActionText, policeCertUploaded && { color: colors.success }]}>
-                        {policeCertUploaded ? (policeCertFileName || 'Police_Clearance_Certificate.pdf') : 'Upload Police Clearance (PDF/JPG)'}
-                      </Text>
-                    </TouchableOpacity>
-                    {policeCertUploaded && (
-                      <TouchableOpacity
-                        style={styles.docRemoveBtn}
-                        onPress={() => {
-                          setPoliceCertUploaded(false);
-                          setPoliceCertFileName('');
                         }}
                       >
                         <Ionicons name="close-circle" size={18} color={colors.danger} />
@@ -1135,39 +1032,40 @@ export const WorkerManagementSection: React.FC<WorkerManagementSectionProps> = (
                     <Text style={styles.dossierLine}>• Member Rating: ⭐ {selectedDossier.rating > 0 ? selectedDossier.rating.toFixed(1) : '5.0'} ({selectedDossier.reviewCount} reviews)</Text>
                   </View>
 
-                  {/* Verified Statutory & KYC Documents */}
-                  <View style={styles.dossierBox}>
-                    <Text style={styles.boxHeading}>Authenticated Verification Records ({selectedDossier.documents?.length || 0})</Text>
-                    {selectedDossier.documents && selectedDossier.documents.length > 0 ? (
-                      selectedDossier.documents.map((doc, dIdx) => (
-                        <View key={dIdx} style={styles.dossierDocRow}>
-                          <Ionicons
-                            name={
-                              doc.type === 'aadhaar'
-                                ? 'card'
-                                : doc.type === 'police_verification'
-                                ? 'shield-checkmark'
-                                : 'ribbon'
-                            }
-                            size={14}
-                            color={colors.primary}
-                          />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.dossierDocTitle}>{doc.name}</Text>
-                            <Text style={styles.dossierDocSub}>
-                              {doc.type.replace(/_/g, ' ').toUpperCase()} • {doc.status.toUpperCase()}
-                            </Text>
-                          </View>
-                          <Badge
-                            label={doc.status === 'verified' ? 'Verified' : 'Attached'}
-                            status={doc.status === 'verified' ? 'verified' : 'pending'}
-                          />
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.dossierLine}>Aadhaar & Cooperative Society Endorsement records verified.</Text>
-                    )}
-                  </View>
+                  {/* Verified Statutory & KYC Documents (ID Proof & Skill Certificate only) */}
+                  {(() => {
+                    const docList = (selectedDossier.documents || []).filter(
+                      (doc) => doc.type === 'aadhaar' || doc.type === 'skill_certificate'
+                    );
+                    return (
+                      <View style={styles.dossierBox}>
+                        <Text style={styles.boxHeading}>Authenticated Verification Records ({docList.length})</Text>
+                        {docList.length > 0 ? (
+                          docList.map((doc, dIdx) => (
+                            <View key={dIdx} style={styles.dossierDocRow}>
+                              <Ionicons
+                                name={doc.type === 'aadhaar' ? 'card' : 'ribbon'}
+                                size={14}
+                                color={colors.primary}
+                              />
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.dossierDocTitle}>{doc.name}</Text>
+                                <Text style={styles.dossierDocSub}>
+                                  {doc.type === 'aadhaar' ? 'ID PROOF' : 'SKILL CERTIFICATE'} • {doc.status.toUpperCase()}
+                                </Text>
+                              </View>
+                              <Badge
+                                label={doc.status === 'verified' ? 'Verified' : 'Attached'}
+                                status={doc.status === 'verified' ? 'verified' : 'pending'}
+                              />
+                            </View>
+                          ))
+                        ) : (
+                          <Text style={styles.dossierLine}>ID Proof & Skill Certificate records verified.</Text>
+                        )}
+                      </View>
+                    );
+                  })()}
 
                   {/* Actions for Admin */}
                   {isAdmin && (

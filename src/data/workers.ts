@@ -33,9 +33,8 @@ export const mockWorkers: WorkerProfile[] = [
     bankAccountLinked: true,
     distanceKm: 1.4,
     documents: [
-      { id: 'd-1', name: 'Aadhaar Card', type: 'aadhaar', status: 'verified', uploadedAt: '2023-08-10' },
-      { id: 'd-2', name: 'ITI Certificate', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-08-11' },
-      { id: 'd-3', name: 'Police Verification', type: 'police_verification', status: 'verified', uploadedAt: '2023-08-12' },
+      { id: 'd-1', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'verified', uploadedAt: '2023-08-10' },
+      { id: 'd-2', name: 'Skill Certificate (ITI Electrician)', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-08-11' },
     ],
   },
   {
@@ -70,8 +69,8 @@ export const mockWorkers: WorkerProfile[] = [
     bankAccountLinked: true,
     distanceKm: 2.1,
     documents: [
-      { id: 'd-4', name: 'Aadhaar Card', type: 'aadhaar', status: 'verified', uploadedAt: '2023-05-18' },
-      { id: 'd-5', name: 'Plumbing Guild Cert', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-05-19' },
+      { id: 'd-4', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'verified', uploadedAt: '2023-05-18' },
+      { id: 'd-5', name: 'Skill Certificate (Plumbing Guild Cert)', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-05-19' },
     ],
   },
   {
@@ -106,8 +105,8 @@ export const mockWorkers: WorkerProfile[] = [
     bankAccountLinked: true,
     distanceKm: 3.2,
     documents: [
-      { id: 'd-6', name: 'Aadhaar Card', type: 'aadhaar', status: 'verified', uploadedAt: '2023-09-01' },
-      { id: 'd-7', name: 'Mahila Sangha Member Card', type: 'society_endorsement', status: 'verified', uploadedAt: '2023-09-02' },
+      { id: 'd-6', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'verified', uploadedAt: '2023-09-01' },
+      { id: 'd-7', name: 'Skill Certificate (Sanitization & Hygiene)', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-09-02' },
     ],
   },
   {
@@ -142,8 +141,8 @@ export const mockWorkers: WorkerProfile[] = [
     bankAccountLinked: true,
     distanceKm: 4.0,
     documents: [
-      { id: 'd-8', name: 'Aadhaar Card', type: 'aadhaar', status: 'verified', uploadedAt: '2023-04-12' },
-      { id: 'd-9', name: 'NSDC Certificate', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-04-13' },
+      { id: 'd-8', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'verified', uploadedAt: '2023-04-12' },
+      { id: 'd-9', name: 'Skill Certificate (NSDC Level 4)', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-04-13' },
     ],
   },
   {
@@ -178,7 +177,8 @@ export const mockWorkers: WorkerProfile[] = [
     bankAccountLinked: true,
     distanceKm: 3.8,
     documents: [
-      { id: 'd-10', name: 'Aadhaar Card', type: 'aadhaar', status: 'verified', uploadedAt: '2023-07-20' },
+      { id: 'd-10', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'verified', uploadedAt: '2023-07-20' },
+      { id: 'd-10b', name: 'Skill Certificate (Asian Paints Master)', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-07-21' },
     ],
   },
   {
@@ -213,7 +213,8 @@ export const mockWorkers: WorkerProfile[] = [
     bankAccountLinked: true,
     distanceKm: 2.8,
     documents: [
-      { id: 'd-11', name: 'Red Cross Certificate', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-11-05' },
+      { id: 'd-11a', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'verified', uploadedAt: '2023-11-04' },
+      { id: 'd-11', name: 'Skill Certificate (Red Cross Caregiving)', type: 'skill_certificate', status: 'verified', uploadedAt: '2023-11-05' },
     ],
   },
   {
@@ -248,7 +249,8 @@ export const mockWorkers: WorkerProfile[] = [
     bankAccountLinked: true,
     distanceKm: 3.5,
     documents: [
-      { id: 'd-12', name: 'Commercial Driving License', type: 'skill_certificate', status: 'verified', uploadedAt: '2024-01-08' },
+      { id: 'd-12a', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'verified', uploadedAt: '2024-01-07' },
+      { id: 'd-12', name: 'Skill Certificate (Commercial Driving License)', type: 'skill_certificate', status: 'verified', uploadedAt: '2024-01-08' },
     ],
   },
   // Pending verification worker (for Admin demo flow!)
@@ -284,9 +286,8 @@ export const mockWorkers: WorkerProfile[] = [
     bankAccountLinked: true,
     distanceKm: 5.2,
     documents: [
-      { id: 'd-13', name: 'Aadhaar Card', type: 'aadhaar', status: 'uploaded', uploadedAt: '2024-02-14' },
-      { id: 'd-14', name: 'Electronics Diploma', type: 'skill_certificate', status: 'uploaded', uploadedAt: '2024-02-14' },
-      { id: 'd-15', name: 'Police Verification Receipt', type: 'police_verification', status: 'uploaded', uploadedAt: '2024-02-15' },
+      { id: 'd-13', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'uploaded', uploadedAt: '2024-02-14' },
+      { id: 'd-14', name: 'Skill Certificate (Electronics & Appliance Diploma)', type: 'skill_certificate', status: 'uploaded', uploadedAt: '2024-02-14' },
     ],
   },
 ];
