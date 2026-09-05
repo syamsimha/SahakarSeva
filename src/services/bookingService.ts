@@ -1,5 +1,6 @@
-import { Booking, BookingStatus, Review, Invoice } from '../types';
+import { Booking, BookingStatus, Review, Invoice, WorkerProfile } from '../types';
 import { mockBookings, mockReviews } from '../data';
+import { isTradeMatching, getWorkerActiveJob } from '../utils/workerMatching';
 
 class BookingService {
   private bookings: Booking[] = [...mockBookings];
@@ -136,6 +137,64 @@ class BookingService {
 
         resolve({ ...updatedBooking });
       }, 300);
+    });
+  }
+
+  async assignWorkerToBooking(
+    bookingId: string,
+    worker: WorkerProfile
+  ): Promise<Booking | null> {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        const index = this.bookings.findIndex((b) => b.id === bookingId);
+        if (index === -1) {
+          resolve(null);
+          return;
+        }
+
+        const targetBooking = this.bookings[index];
+
+        // 1. Validate profession matching
+        if (!isTradeMatching(targetBooking.categoryId, targetBooking.serviceTitle, worker)) {
+          const err = new Error(
+            `Skill Mismatch: This job (${targetBooking.serviceTitle}) requires a ${targetBooking.categoryId || 'trade'} specialist, but ${worker.name} is certified as "${worker.primarySkill}".`
+          );
+          reject(err);
+          return;
+        }
+
+        // 2. Validate one worker to one active work concurrency
+        const activeJob = getWorkerActiveJob(worker.id, this.bookings, bookingId);
+        if (activeJob) {
+          const err = new Error(
+            `Worker Concurrency Limit: ${worker.name} already has an ongoing assignment #${activeJob.bookingCode} (${activeJob.serviceTitle} - ${activeJob.status.replace('_', ' ').toUpperCase()}). A worker can only be assigned to one active job at a time.`
+          );
+          reject(err);
+          return;
+        }
+
+        const now = new Date().toISOString();
+        const updatedBooking: Booking = {
+          ...targetBooking,
+          workerId: worker.id,
+          workerName: worker.name,
+          workerSkill: worker.primarySkill,
+          workerPhone: worker.phone,
+          cooperativeName: worker.cooperativeName,
+          status: 'accepted',
+          statusHistory: [
+            ...(targetBooking.statusHistory || []),
+            {
+              status: 'accepted',
+              timestamp: now,
+              note: `Directly dispatched to verified worker ${worker.name} (${worker.primarySkill}) by Cooperative Admin`,
+            },
+          ],
+        };
+
+        this.bookings[index] = updatedBooking;
+        resolve({ ...updatedBooking });
+      }, 150);
     });
   }
 

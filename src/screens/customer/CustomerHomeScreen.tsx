@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useBookings } from '../../context/BookingContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { useLocation } from '../../context/LocationContext';
 import { workerService } from '../../services';
 import { WorkerProfile } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +41,7 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
   const { bookings } = useBookings();
   const { unreadCount } = useNotifications();
   const { t } = useLanguage();
+  const { currentLocation, openLocationModal, detectLiveGPS, isLocating } = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [workers, setWorkers] = useState<WorkerProfile[]>([]);
 
@@ -56,7 +58,6 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
     <View style={styles.container}>
       <Header
         showLocation
-        locationName="Indiranagar, Bengaluru"
         onNotificationPress={onNavigateToNotifications}
         unreadNotificationsCount={unreadCount}
       />
@@ -67,12 +68,44 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
           <Text style={styles.greetingText}>{t('greeting')}, {user?.name.split(' ')[0] || 'Member'} 👋</Text>
           <Text style={styles.heroSubtitle}>{t('hero_subtitle')}</Text>
 
+          {/* Quick Location Bar with GPS Fix & Modify Place */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={openLocationModal}
+            style={styles.locationBar}
+          >
+            <View style={styles.locationBarLeft}>
+              <Ionicons
+                name={currentLocation.isGPS ? 'navigate' : 'pin'}
+                size={16}
+                color={currentLocation.isGPS ? colors.success : colors.primary}
+              />
+              <View style={{ flex: 1, marginLeft: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={styles.locationBarPlace} numberOfLines={1}>
+                    {currentLocation.placeName || currentLocation.city}
+                  </Text>
+                  {currentLocation.isGPS && (
+                    <Text style={styles.locationGpsBadge}>GPS ACTIVE</Text>
+                  )}
+                </View>
+                <Text style={styles.locationBarAddress} numberOfLines={1}>
+                  {currentLocation.address}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.locationModifyBtn}>
+              <Text style={styles.locationModifyBtnText}>Modify</Text>
+              <Ionicons name="chevron-forward" size={12} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
+
           <SearchBar
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder={t('search_placeholder')}
             onFilterPress={() => onNavigateToServices()}
-            style={{ marginTop: spacing.md }}
+            style={{ marginTop: spacing.sm }}
           />
         </View>
 
@@ -147,9 +180,16 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{t('workers_near_zone')}</Text>
-            <Text style={styles.zoneText}>Indiranagar Cluster</Text>
+            <TouchableOpacity onPress={openLocationModal} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Ionicons name={currentLocation.isGPS ? 'navigate' : 'location'} size={12} color={colors.primary} />
+              <Text style={styles.zoneText}>{currentLocation.placeName || currentLocation.city} Cluster</Text>
+            </TouchableOpacity>
           </View>
-          <MapPlaceholder height={160} workerCount={8} />
+          <MapPlaceholder
+            height={160}
+            locationName={`${currentLocation.placeName || currentLocation.city} (${currentLocation.isGPS ? '🛰️ Live GPS' : '📍 Active Zone'})`}
+            workerCount={8}
+          />
         </View>
 
         {/* Nearby Verified Workers */}
@@ -338,5 +378,61 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 15,
+  },
+  locationBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  locationBarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  locationBarPlace: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  locationGpsBadge: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.success,
+    backgroundColor: colors.successLight,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: borderRadius.xs,
+  },
+  locationBarAddress: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  locationModifyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: borderRadius.round,
+    gap: 2,
+  },
+  locationModifyBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
   },
 });

@@ -13,6 +13,7 @@ import { WorkerCard } from '../../components/cards';
 import { EmptyState } from '../../components/ui';
 import { serviceCategories } from '../../data';
 import { workerService } from '../../services';
+import { useLocation } from '../../context/LocationContext';
 import { WorkerProfile, ServiceCategoryKey } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -29,6 +30,7 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
   onNavigateToBookingFlow,
   onBack,
 }) => {
+  const { currentLocation, openLocationModal } = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategoryId || 'all');
   const [minRating, setMinRating] = useState<number>(0);
@@ -39,7 +41,7 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
 
   useEffect(() => {
     fetchWorkers();
-  }, [searchQuery, selectedCategory, minRating, availableOnly, sortBy]);
+  }, [searchQuery, selectedCategory, minRating, availableOnly, sortBy, currentLocation]);
 
   const fetchWorkers = async () => {
     setLoading(true);
@@ -73,6 +75,26 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
         showBack={Boolean(onBack)}
         onBack={onBack}
       />
+
+      {/* Location Strip */}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={openLocationModal}
+        style={styles.locationStrip}
+      >
+        <Ionicons
+          name={currentLocation.isGPS ? 'navigate' : 'location'}
+          size={14}
+          color={currentLocation.isGPS ? colors.success : colors.primary}
+        />
+        <Text style={styles.locationStripText} numberOfLines={1}>
+          Area: <Text style={{ fontWeight: '700', color: colors.text }}>{currentLocation.placeName || currentLocation.city}</Text>
+        </Text>
+        <View style={styles.changeLocBtn}>
+          <Text style={styles.changeLocBtnText}>{currentLocation.isGPS ? 'GPS Active' : 'Modify Place'}</Text>
+          <Ionicons name="chevron-forward" size={11} color={colors.primary} />
+        </View>
+      </TouchableOpacity>
 
       {/* Search Input */}
       <View style={styles.searchSection}>
@@ -277,5 +299,36 @@ const styles = StyleSheet.create({
   listContent: {
     padding: spacing.md,
     paddingBottom: spacing.xxxl,
+  },
+  locationStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  locationStripText: {
+    flex: 1,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginLeft: 6,
+    marginRight: 8,
+  },
+  changeLocBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: borderRadius.sm,
+    gap: 2,
+  },
+  changeLocBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
   },
 });

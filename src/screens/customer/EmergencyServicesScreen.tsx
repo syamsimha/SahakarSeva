@@ -13,6 +13,7 @@ import { Button, MapPlaceholder } from '../../components/ui';
 import { emergencyServices } from '../../data';
 import { useBookings } from '../../context/BookingContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLocation } from '../../context/LocationContext';
 import { EmergencyService, Booking } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -27,6 +28,7 @@ export const EmergencyServicesScreen: React.FC<EmergencyServicesScreenProps> = (
 }) => {
   const { user } = useAuth();
   const { createBooking } = useBookings();
+  const { currentLocation, openLocationModal } = useLocation();
   const [selectedEmergency, setSelectedEmergency] = useState<EmergencyService>(emergencyServices[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -48,13 +50,13 @@ export const EmergencyServicesScreen: React.FC<EmergencyServicesScreenProps> = (
         scheduledTimeSlot: `ETA: ${selectedEmergency.etaMinutes} mins`,
         status: 'on_the_way',
         serviceLocation: {
-          addressLine: user?.address || 'Indiranagar 100ft Road, Bengaluru',
-          city: 'Bengaluru',
-          pincode: '560038',
-          latitude: 12.9784,
-          longitude: 77.6408,
+          addressLine: currentLocation.address || user?.address || 'Service Location',
+          city: currentLocation.city || 'Bengaluru',
+          pincode: currentLocation.pincode || '560038',
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
         },
-        instructions: 'URGENT: Cooperative Emergency SOS Protocol',
+        instructions: `URGENT: Cooperative Emergency SOS Protocol [Area: ${currentLocation.placeName || currentLocation.city}]`,
         estimatedAmount: selectedEmergency.baseEmergencyPrice,
         welfareCessAmount: Math.round(selectedEmergency.baseEmergencyPrice * 0.05),
         isEmergency: true,
@@ -88,11 +90,26 @@ export const EmergencyServicesScreen: React.FC<EmergencyServicesScreenProps> = (
 
         {/* Current Location & Map Indicator */}
         <View style={styles.mapBox}>
-          <View style={styles.locRow}>
-            <Ionicons name="navigate" size={16} color={colors.danger} />
-            <Text style={styles.locText}>Dispatching to: Indiranagar, Bengaluru</Text>
-          </View>
-          <MapPlaceholder height={140} locationName="Live GPS: Indiranagar Zone 4" workerCount={5} />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={openLocationModal}
+            style={styles.locRow}
+          >
+            <Ionicons
+              name={currentLocation.isGPS ? 'navigate' : 'location'}
+              size={16}
+              color={colors.danger}
+            />
+            <Text style={styles.locText} numberOfLines={1}>
+              Dispatch to: {currentLocation.placeName || currentLocation.city} ({currentLocation.address})
+            </Text>
+            <Text style={styles.changeGpsLink}>Modify / GPS</Text>
+          </TouchableOpacity>
+          <MapPlaceholder
+            height={140}
+            locationName={`${currentLocation.isGPS ? '🛰️ Live GPS Active' : '📍 Place'}: ${currentLocation.placeName || currentLocation.city}`}
+            workerCount={5}
+          />
         </View>
 
         {/* Emergency Trade Selection */}
@@ -207,14 +224,26 @@ const styles = StyleSheet.create({
   locRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.xs,
   },
   locText: {
+    flex: 1,
     fontSize: 12,
     fontWeight: '700',
     color: colors.text,
     marginLeft: 6,
+    marginRight: 8,
+  },
+  changeGpsLink: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: borderRadius.xs,
   },
   sectionTitle: {
     ...typography.h4,

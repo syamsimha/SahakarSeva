@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, borderRadius, spacing } from '../../theme';
+import { useLocation } from '../../context/LocationContext';
 
 interface MapPlaceholderProps {
   height?: number;
@@ -13,11 +14,16 @@ interface MapPlaceholderProps {
 
 export const MapPlaceholder: React.FC<MapPlaceholderProps> = ({
   height = 180,
-  locationName = 'Indiranagar, Bengaluru (12.9784° N, 77.6408° E)',
+  locationName,
   workerCount = 6,
   showWorkers = true,
   style,
 }) => {
+  const { currentLocation } = useLocation();
+  const displayLocation =
+    locationName ||
+    `${currentLocation.placeName}, ${currentLocation.city || currentLocation.state} (${currentLocation.latitude.toFixed(4)}° N, ${currentLocation.longitude.toFixed(4)}° E)`;
+
   return (
     <View style={[styles.container, { height }, style]}>
       {/* Grid Pattern Background simulation */}
@@ -64,7 +70,7 @@ export const MapPlaceholder: React.FC<MapPlaceholderProps> = ({
       {/* Bottom Map Info Overlay */}
       <View style={styles.bottomBar}>
         <Ionicons name="location" size={14} color={colors.primary} style={{ marginRight: 6 }} />
-        <Text style={styles.locationText} numberOfLines={1}>{locationName}</Text>
+        <Text style={styles.locationText} numberOfLines={1}>{displayLocation}</Text>
         <View style={styles.workerBadge}>
           <Text style={styles.workerBadgeText}>{workerCount} Active</Text>
         </View>

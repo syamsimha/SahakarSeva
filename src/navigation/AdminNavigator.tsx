@@ -50,6 +50,7 @@ export const AdminNavigator: React.FC = () => {
             onNavigateToBookings={() => setActiveTab('bookings')}
             onNavigateToForecast={() => setShowForecast(true)}
             onNavigateToNotifications={() => setShowNotifications(true)}
+            onNavigateToProfile={() => setActiveTab('profile')}
           />
         );
       case 'workers':
@@ -62,6 +63,9 @@ export const AdminNavigator: React.FC = () => {
         return (
           <ProfileScreen
             onNavigateToHelp={() => setShowHelp(true)}
+            onNavigateToVerification={() => setShowVerification(true)}
+            onNavigateToBookings={() => setActiveTab('bookings')}
+            onNavigateToForecast={() => setShowForecast(true)}
           />
         );
     }

@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { colors, borderRadius, spacing, typography } from '../../theme';
 import { useLanguage } from '../../context/LanguageContext';
+import { useLocation } from '../../context/LocationContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LanguageModal } from './LanguageModal';
+import { LocationSelectorModal } from './LocationSelectorModal';
+import { Avatar } from '../ui';
 
 interface HeaderProps {
   title?: string;
@@ -12,8 +15,12 @@ interface HeaderProps {
   onBack?: () => void;
   showLocation?: boolean;
   locationName?: string;
+  onLocationPress?: () => void;
   onNotificationPress?: () => void;
   unreadNotificationsCount?: number;
+  onProfilePress?: () => void;
+  avatarUrl?: string;
+  userName?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,12 +29,25 @@ export const Header: React.FC<HeaderProps> = ({
   showBack = false,
   onBack,
   showLocation = false,
-  locationName = 'Indiranagar, Bengaluru',
+  locationName,
+  onLocationPress,
   onNotificationPress,
   unreadNotificationsCount = 2,
+  onProfilePress,
+  avatarUrl,
+  userName,
 }) => {
   const { language, t } = useLanguage();
+  const {
+    currentLocation,
+    isLocating,
+    isLocationModalOpen,
+    openLocationModal,
+    closeLocationModal,
+  } = useLocation();
   const [langModalVisible, setLangModalVisible] = useState(false);
+
+  const displayLocation = locationName || currentLocation.placeName || currentLocation.city;
 
   return (
     <View style={styles.container}>
@@ -39,16 +59,31 @@ export const Header: React.FC<HeaderProps> = ({
               <Ionicons name="arrow-back" size={22} color={colors.text} />
             </TouchableOpacity>
           ) : showLocation ? (
-            <View style={styles.locationContainer}>
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={onLocationPress || openLocationModal}
+              style={styles.locationContainer}
+              accessibilityLabel="Change or modify location"
+            >
               <View style={styles.locationHeaderRow}>
-                <Ionicons name="location" size={14} color={colors.primary} />
-                <Text style={styles.locationLabel}>{t('current_location')}</Text>
-                <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
+                <Ionicons
+                  name={currentLocation.isGPS ? 'navigate' : 'location'}
+                  size={14}
+                  color={currentLocation.isGPS ? colors.success : colors.primary}
+                />
+                <Text style={styles.locationLabel}>
+                  {currentLocation.isGPS ? '🛰️ LIVE GPS' : t('current_location')}
+                </Text>
+                {isLocating ? (
+                  <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 3, transform: [{ scale: 0.6 }] }} />
+                ) : (
+                  <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
+                )}
               </View>
               <Text style={styles.locationValue} numberOfLines={1}>
-                {locationName}
+                {displayLocation}
               </Text>
-            </View>
+            </TouchableOpacity>
           ) : (
             <View style={styles.brandRow}>
               <View style={styles.brandLogoBox}>
@@ -89,12 +124,34 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </TouchableOpacity>
           )}
+
+          {/* User / Officer Profile Avatar Button */}
+          {onProfilePress && (
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={onProfilePress}
+              style={styles.profileHeaderBtn}
+              accessibilityLabel="View or Edit Profile"
+            >
+              <Avatar
+                name={userName || 'Admin'}
+                url={avatarUrl}
+                size={34}
+                showVerifiedBadge
+              />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
       <LanguageModal
         visible={langModalVisible}
         onClose={() => setLangModalVisible(false)}
+      />
+
+      <LocationSelectorModal
+        visible={isLocationModalOpen}
+        onClose={closeLocationModal}
       />
     </View>
   );
@@ -205,5 +262,12 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: colors.textInverse,
     fontWeight: '700',
+  },
+  profileHeaderBtn: {
+    marginLeft: 4,
+    padding: 1,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
 });

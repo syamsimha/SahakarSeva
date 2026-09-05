@@ -17,6 +17,7 @@ interface AuthContextType {
   switchRole: (role: UserRole) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
+  updateUser: (updates: Partial<AppUser>) => Promise<void>;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
 }
@@ -28,14 +29,15 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: false,
   authError: null,
   isBackendConnected: false,
-  login: async () => {},
-  loginWithEmail: async () => {},
-  register: async () => {},
-  switchRole: async () => {},
-  logout: async () => {},
-  clearError: () => {},
-  completeOnboarding: () => {},
-  resetOnboarding: () => {},
+  login: async () => { },
+  loginWithEmail: async () => { },
+  register: async () => { },
+  switchRole: async () => { },
+  logout: async () => { },
+  clearError: () => { },
+  updateUser: async () => { },
+  completeOnboarding: () => { },
+  resetOnboarding: () => { },
 });
 
 const LAST_ACTIVE_KEY = '@sahakar_last_active_timestamp';
@@ -139,8 +141,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Fetch real Supabase authenticated user with database profile verification
         const u = await authService.getCurrentUser();
         if (u) {
-          setUser(u);
-          setRole(u.role);
+          let merged = u;
+          try {
+            const cached = await AsyncStorage.getItem('@sahakar_cached_user');
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (parsed && parsed.id === u.id) {
+                merged = { ...u, ...parsed } as AppUser;
+              }
+            }
+          } catch (e) {
+            // Ignore parse error
+          }
+          setUser(merged);
+          setRole(merged.role);
           await recordActivity();
         } else {
           await clearInactivityTimestamp();
@@ -318,6 +332,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateUser = async (updates: Partial<AppUser>) => {
+    if (!user) return;
+    const updated = { ...user, ...updates } as AppUser;
+    setUser(updated);
+    try {
+      await AsyncStorage.setItem('@sahakar_cached_user', JSON.stringify(updated));
+    } catch (e) {
+      // Ignore storage error
+    }
+    try {
+      if (authService.isConfigured() && user.id) {
+        await authService.updateUserProfile(user.id, updates);
+      }
+    } catch (e) {
+      console.warn('Backend profile update notice:', e);
+    }
+  };
+
   const completeOnboarding = () => {
     setIsOnboarded(true);
   };
@@ -341,6 +373,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchRole,
         logout,
         clearError,
+        updateUser,
         completeOnboarding,
         resetOnboarding,
       }}

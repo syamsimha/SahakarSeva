@@ -575,10 +575,10 @@ class AuthService {
     if (profile && profile.phone && profile.email) {
       const normP = normalizePhoneNumber(profile.phone);
       if (normP) {
-        AsyncStorage.setItem(`@sahakar_phone_map_${normP}`, normalizeEmail(profile.email)).catch(() => {});
+        AsyncStorage.setItem(`@sahakar_phone_map_${normP}`, normalizeEmail(profile.email)).catch(() => { });
         const d = normP.replace(/[^0-9]/g, '');
         if (d.length >= 10) {
-          AsyncStorage.setItem(`@sahakar_phone_map_${d.slice(-10)}`, normalizeEmail(profile.email)).catch(() => {});
+          AsyncStorage.setItem(`@sahakar_phone_map_${d.slice(-10)}`, normalizeEmail(profile.email)).catch(() => { });
         }
       }
     }
@@ -621,120 +621,120 @@ class AuthService {
         );
       }
 
-    if (!payload.password || payload.password.length < 8) {
-      throw new Error('Password must be at least 8 characters.');
-    }
-
-    const normalizedEmail = normalizeEmail(payload.email);
-    const normalizedPhone = normalizePhoneNumber(payload.phone);
-
-    if (!normalizedEmail || !normalizedEmail.includes('@')) {
-      throw new Error('Please enter a valid email address.');
-    }
-
-    // 1. Pre-flight duplicate check via database RPC (accessible to anonymous users)
-    try {
-      const { data: duplicateCheck, error: rpcErr } = await supabase.rpc('check_profile_exists', {
-        p_email: normalizedEmail,
-        p_phone: normalizedPhone || '',
-      });
-
-      if (!rpcErr && duplicateCheck && typeof duplicateCheck === 'object') {
-        const check = duplicateCheck as { email_exists?: boolean; phone_exists?: boolean };
-        if (check.email_exists) {
-          throw new Error('An account with this email address already exists.');
-        }
-        if (check.phone_exists) {
-          throw new Error('An account with this mobile number already exists.');
-        }
+      if (!payload.password || payload.password.length < 8) {
+        throw new Error('Password must be at least 8 characters.');
       }
-    } catch (checkErr: any) {
-      if (
-        checkErr.message === 'An account with this email address already exists.' ||
-        checkErr.message === 'An account with this mobile number already exists.'
-      ) {
-        throw checkErr;
-      }
-      // Non-fatal if RPC unavailable; database unique constraints remain the authoritative guard
-    }
 
-    // 2. Sign up the user in Supabase Auth with normalized email and phone
-    // Note: Do not pass emailRedirectTo to prevent unnecessary confirmation email processing on registration
-    const { data, error } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password: payload.password,
-      options: {
-        data: {
-          role: payload.role,
-          full_name: payload.fullName.trim(),
-          phone: normalizedPhone,
-          address: payload.address || '',
-          city: payload.city || '',
-          pincode: payload.pincode || '',
-          primary_skill: payload.primarySkill,
-          experience_years: payload.experienceYears,
-          cooperative_name: payload.cooperativeName,
-          admin_designation: payload.adminDesignation,
-          society_registration_no: payload.societyRegNo,
-          federation_name: payload.federationName,
+      const normalizedEmail = normalizeEmail(payload.email);
+      const normalizedPhone = normalizePhoneNumber(payload.phone);
+
+      if (!normalizedEmail || !normalizedEmail.includes('@')) {
+        throw new Error('Please enter a valid email address.');
+      }
+
+      // 1. Pre-flight duplicate check via database RPC (accessible to anonymous users)
+      try {
+        const { data: duplicateCheck, error: rpcErr } = await supabase.rpc('check_profile_exists', {
+          p_email: normalizedEmail,
+          p_phone: normalizedPhone || '',
+        });
+
+        if (!rpcErr && duplicateCheck && typeof duplicateCheck === 'object') {
+          const check = duplicateCheck as { email_exists?: boolean; phone_exists?: boolean };
+          if (check.email_exists) {
+            throw new Error('An account with this email address already exists.');
+          }
+          if (check.phone_exists) {
+            throw new Error('An account with this mobile number already exists.');
+          }
+        }
+      } catch (checkErr: any) {
+        if (
+          checkErr.message === 'An account with this email address already exists.' ||
+          checkErr.message === 'An account with this mobile number already exists.'
+        ) {
+          throw checkErr;
+        }
+        // Non-fatal if RPC unavailable; database unique constraints remain the authoritative guard
+      }
+
+      // 2. Sign up the user in Supabase Auth with normalized email and phone
+      // Note: Do not pass emailRedirectTo to prevent unnecessary confirmation email processing on registration
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password: payload.password,
+        options: {
+          data: {
+            role: payload.role,
+            full_name: payload.fullName.trim(),
+            phone: normalizedPhone,
+            address: payload.address || '',
+            city: payload.city || '',
+            pincode: payload.pincode || '',
+            primary_skill: payload.primarySkill,
+            experience_years: payload.experienceYears,
+            cooperative_name: payload.cooperativeName,
+            admin_designation: payload.adminDesignation,
+            society_registration_no: payload.societyRegNo,
+            federation_name: payload.federationName,
+          },
         },
-      },
-    });
-
-    if (error) {
-      console.error('[AuthService.register] Supabase Auth signUp failed:', {
-        message: error.message,
-        status: error.status,
-        name: error.name,
-        code: (error as any).code,
       });
-      throw new Error(mapFriendlyAuthError(error));
-    }
 
-    if (!data?.user) {
-      console.error('[AuthService.register] Supabase signUp returned no user and no error:', data);
-      throw new Error('Registration could not be completed. Please check your details and try again.');
-    }
-
-    // GoTrue existing user detection: if user already exists, identities is returned as empty array
-    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-      throw new Error('An account with this email address already exists.');
-    }
-
-    // If worker documents are provided, record them in PostgreSQL
-    if (payload.role === 'worker' && data.user) {
-      try {
-        if (payload.identityDoc) {
-          await supabase.from('worker_documents').insert({
-            worker_id: data.user.id,
-            document_name: payload.identityDoc.name,
-            document_type: 'aadhaar',
-            status: 'uploaded',
-            file_url: payload.identityDoc.uri,
-          });
-        }
-        if (payload.skillCertDoc) {
-          await supabase.from('worker_documents').insert({
-            worker_id: data.user.id,
-            document_name: payload.skillCertDoc.name,
-            document_type: 'skill_certificate',
-            status: 'uploaded',
-            file_url: payload.skillCertDoc.uri,
-          });
-        }
-      } catch (docErr) {
-        console.warn('Could not record worker documents:', docErr);
+      if (error) {
+        console.error('[AuthService.register] Supabase Auth signUp failed:', {
+          message: error.message,
+          status: error.status,
+          name: error.name,
+          code: (error as any).code,
+        });
+        throw new Error(mapFriendlyAuthError(error));
       }
-    }
 
-    // If a session exists, ensure the database profile is recorded
-    if (data.user && data.session) {
-      try {
-        await this.ensureUserProfile(data.user);
-      } catch (ensureErr) {
-        console.warn('Could not auto-provision profile on registration:', ensureErr);
+      if (!data?.user) {
+        console.error('[AuthService.register] Supabase signUp returned no user and no error:', data);
+        throw new Error('Registration could not be completed. Please check your details and try again.');
       }
-    }
+
+      // GoTrue existing user detection: if user already exists, identities is returned as empty array
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        throw new Error('An account with this email address already exists.');
+      }
+
+      // If worker documents are provided, record them in PostgreSQL
+      if (payload.role === 'worker' && data.user) {
+        try {
+          if (payload.identityDoc) {
+            await supabase.from('worker_documents').insert({
+              worker_id: data.user.id,
+              document_name: payload.identityDoc.name,
+              document_type: 'aadhaar',
+              status: 'uploaded',
+              file_url: payload.identityDoc.uri,
+            });
+          }
+          if (payload.skillCertDoc) {
+            await supabase.from('worker_documents').insert({
+              worker_id: data.user.id,
+              document_name: payload.skillCertDoc.name,
+              document_type: 'skill_certificate',
+              status: 'uploaded',
+              file_url: payload.skillCertDoc.uri,
+            });
+          }
+        } catch (docErr) {
+          console.warn('Could not record worker documents:', docErr);
+        }
+      }
+
+      // If a session exists, ensure the database profile is recorded
+      if (data.user && data.session) {
+        try {
+          await this.ensureUserProfile(data.user);
+        } catch (ensureErr) {
+          console.warn('Could not auto-provision profile on registration:', ensureErr);
+        }
+      }
       if (normalizedPhone && normalizedEmail) {
         try {
           await AsyncStorage.setItem(`@sahakar_phone_map_${normalizedPhone}`, normalizedEmail);
@@ -923,7 +923,7 @@ class AuthService {
    * Handles PASSWORD_RECOVERY and enforces profile verification without email blocking.
    */
   onAuthStateChange(callback: (user: AppUser | null, event?: string) => void) {
-    if (!isSupabaseConfigured()) return { unsubscribe: () => {} };
+    if (!isSupabaseConfigured()) return { unsubscribe: () => { } };
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -958,6 +958,49 @@ class AuthService {
     );
 
     return subscription;
+  }
+
+  /**
+   * Updates user profile in Supabase profiles and related role tables
+   */
+  async updateUserProfile(userId: string, updates: Partial<AppUser>): Promise<void> {
+    if (!isSupabaseConfigured() || !userId) return;
+
+    try {
+      const profileUpdates: Record<string, any> = {};
+      if (updates.name !== undefined) profileUpdates.full_name = updates.name;
+      if (updates.phone !== undefined) profileUpdates.phone = updates.phone;
+      if (updates.avatarUrl !== undefined) profileUpdates.avatar_url = updates.avatarUrl;
+      if (updates.address !== undefined) profileUpdates.address = updates.address;
+      if (updates.city !== undefined) profileUpdates.city = updates.city;
+      if (updates.pincode !== undefined) profileUpdates.pincode = updates.pincode;
+
+      if (Object.keys(profileUpdates).length > 0) {
+        await supabase
+          .from('profiles')
+          .update(profileUpdates as any)
+          .eq('id', userId);
+      }
+
+      // Only allow updating admin_profiles if role is strictly 'admin'
+      if (updates.role === 'admin' || ('adminDesignation' in updates && updates.role === 'admin')) {
+        const adminUpdates: Record<string, any> = {};
+        const adminObj = updates as Partial<CooperativeAdmin>;
+        if (adminObj.adminDesignation !== undefined) adminUpdates.admin_designation = adminObj.adminDesignation;
+        if (adminObj.federationName !== undefined) adminUpdates.federation_name = adminObj.federationName;
+        if (adminObj.societyRegistrationNo !== undefined) adminUpdates.society_registration_no = adminObj.societyRegistrationNo;
+        if (adminObj.zoneAssigned !== undefined) adminUpdates.zone_assigned = adminObj.zoneAssigned;
+
+        if (Object.keys(adminUpdates).length > 0) {
+          await supabase
+            .from('admin_profiles')
+            .update(adminUpdates as any)
+            .eq('id', userId);
+        }
+      }
+    } catch (err) {
+      console.warn('Error updating profile in Supabase:', err);
+    }
   }
 
   /**

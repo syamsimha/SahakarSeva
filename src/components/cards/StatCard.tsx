@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors, borderRadius, spacing, typography } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -11,6 +11,7 @@ interface StatCardProps {
   color?: string;
   trend?: string;
   trendPositive?: boolean;
+  onPress?: () => void;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
@@ -21,9 +22,10 @@ export const StatCard: React.FC<StatCardProps> = ({
   color = colors.primary,
   trend,
   trendPositive = true,
+  onPress,
 }) => {
-  return (
-    <View style={styles.card}>
+  const content = (
+    <>
       <View style={styles.topRow}>
         <View style={[styles.iconBox, { backgroundColor: `${color}18` }]}>
           <Ionicons name={icon} size={20} color={color} />
@@ -55,8 +57,18 @@ export const StatCard: React.FC<StatCardProps> = ({
       <Text style={styles.value}>{value}</Text>
       <Text style={styles.title}>{title}</Text>
       {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-    </View>
+    </>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity style={styles.card} activeOpacity={0.75} onPress={onPress}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return <View style={styles.card}>{content}</View>;
 };
 
 const styles = StyleSheet.create({

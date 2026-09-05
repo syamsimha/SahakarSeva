@@ -6,8 +6,9 @@ import React, {
   useCallback,
 } from 'react';
 
-import { Booking, BookingStatus } from '../types';
+import { Booking, BookingStatus, WorkerProfile } from '../types';
 import { bookingService, notificationService, workerService } from '../services';
+import { isTradeMatching, getWorkerActiveJob } from '../utils/workerMatching';
 
 interface BookingContextType {
   bookings: Booking[];
@@ -56,6 +57,11 @@ interface BookingContextType {
     comment: string
   ) => Promise<void>;
 
+  assignJobToWorker: (
+    bookingId: string,
+    worker: WorkerProfile
+  ) => Promise<Booking | null>;
+
   refreshBookings: () => Promise<void>;
 }
 
@@ -80,6 +86,8 @@ const BookingContext = createContext<BookingContextType>({
   verifyCompletionOtp: () => false,
 
   rateBooking: async () => { },
+
+  assignJobToWorker: async () => null,
 
   refreshBookings: async () => { },
 });
@@ -372,6 +380,63 @@ export const BookingProvider: React.FC<{
     });
   };
 
+  // --------------------------------------------------
+  // ASSIGN JOB TO WORKER (ADMIN DISPATCH)
+  // --------------------------------------------------
+
+  const assignJobToWorker = async (
+    bookingId: string,
+    worker: WorkerProfile
+  ): Promise<Booking | null> => {
+    const targetBooking = bookings.find((b) => b.id === bookingId);
+    if (!targetBooking) {
+      throw new Error('Target booking record could not be found.');
+    }
+
+    // 1. Enforce profession / trade matching
+    if (!isTradeMatching(targetBooking.categoryId, targetBooking.serviceTitle, worker)) {
+      throw new Error(
+        `Skill Mismatch: "${targetBooking.serviceTitle}" (${targetBooking.categoryId || 'trade'}) requires a certified trade professional. ${worker.name} is registered as "${worker.primarySkill}".`
+      );
+    }
+
+    // 2. Enforce one active job per worker concurrency limit
+    const activeJob = getWorkerActiveJob(worker.id, bookings, bookingId);
+    if (activeJob) {
+      throw new Error(
+        `Worker Concurrency Limit: ${worker.name} already has an ongoing assignment #${activeJob.bookingCode} (${activeJob.serviceTitle} - ${activeJob.status.replace('_', ' ').toUpperCase()}). A worker can only be assigned to one active job at a time.`
+      );
+    }
+
+    const updated = await bookingService.assignWorkerToBooking(bookingId, worker);
+    if (updated) {
+      setBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? updated : b))
+      );
+
+      // Notify the worker
+      await notificationService.sendNotification({
+        recipientRole: 'worker',
+        recipientId: worker.id,
+        title: 'New Cooperative Job Assigned',
+        body: `Admin dispatched you to "${updated.serviceTitle}" for ${updated.customerName}. Scheduled on ${updated.scheduledDate} at ${updated.scheduledTimeSlot}.`,
+        type: 'job',
+        relatedId: updated.id,
+      });
+
+      // Notify the customer
+      await notificationService.sendNotification({
+        recipientRole: 'customer',
+        recipientId: updated.customerId,
+        title: 'Verified Worker Assigned!',
+        body: `Cooperative assigned ${worker.name} (${worker.primarySkill}) for your ${updated.serviceTitle} request.`,
+        type: 'booking',
+        relatedId: updated.id,
+      });
+    }
+    return updated;
+  };
+
   return (
     <BookingContext.Provider
       value={{
@@ -395,6 +460,8 @@ export const BookingProvider: React.FC<{
         verifyCompletionOtp,
 
         rateBooking,
+
+        assignJobToWorker,
 
         refreshBookings: fetchAll,
       }}

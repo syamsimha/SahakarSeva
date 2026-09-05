@@ -21,7 +21,7 @@ export const en = {
   
   // Customer Home
   greeting: 'Namaste',
-  current_location: 'Indiranagar, Bengaluru',
+  current_location: 'Current Location',
   search_placeholder: 'Search electrician, plumber, carpenter...',
   emergency_services: 'Emergency 24x7 Services',
   emergency_subtitle: 'Priority cooperative workers arriving in 20-30 mins',
@@ -68,12 +68,12 @@ export const en = {
   welfare_pass: 'Cooperative Welfare Pass',
   skill_verification_card: 'Skill Verification & Badges',
   guaranteed_minimum_wage: 'Government Guaranteed Minimum Wage',
-  fair_wage_protection: 'Protection under Karnataka Labour Cooperative Welfare Board',
+  fair_wage_protection: 'Protection under State Labour Cooperative Welfare Board',
   
   // Admin Home & Console
   federation_admin: 'Federation Admin',
   district_labour_ops: 'District Labour Operations',
-  urban_cluster: 'Bengaluru Urban Cluster',
+  urban_cluster: 'District Urban Cluster',
   societies_live: '14 Societies Live',
   total_workers: 'Total Workers',
   verified_percentage: 'Verified Workers',

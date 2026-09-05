@@ -17,6 +17,7 @@ import { serviceCategories, subServices } from '../../data';
 import { workerService } from '../../services';
 import { useAuth } from '../../context/AuthContext';
 import { useBookings } from '../../context/BookingContext';
+import { useLocation } from '../../context/LocationContext';
 import {
   WorkerProfile,
   ServiceCategoryKey,
@@ -98,6 +99,7 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
 }) => {
   const { user } = useAuth();
   const { createBooking } = useBookings();
+  const { currentLocation, openLocationModal, detectLiveGPS } = useLocation();
 
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 8;
@@ -168,18 +170,36 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   // ============================================================
 
   const [addressLine, setAddressLine] = useState(
-    user?.address || ''
+    currentLocation?.address || user?.address || ''
   );
 
   const [landmark, setLandmark] = useState('');
 
   const [coordinates, setCoordinates] = useState<Coordinates | null>(
-    null
+    currentLocation
+      ? {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+        }
+      : null
   );
 
   const [locationLoading, setLocationLoading] = useState(false);
 
-  const [locationDetected, setLocationDetected] = useState(false);
+  const [locationDetected, setLocationDetected] = useState(
+    Boolean(currentLocation?.isGPS)
+  );
+
+  useEffect(() => {
+    if (currentLocation?.address) {
+      setAddressLine(currentLocation.address);
+      setCoordinates({
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+      });
+      setLocationDetected(Boolean(currentLocation.isGPS));
+    }
+  }, [currentLocation]);
 
   // ============================================================
   // STEP 6 - INSTRUCTIONS
@@ -1158,32 +1178,57 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
               Use your live location or enter the service address
             </Text>
 
-            {/* LIVE LOCATION BUTTON */}
+            {/* LIVE LOCATION BUTTONS */}
 
-            <TouchableOpacity
-              onPress={getCurrentLocation}
-              disabled={locationLoading}
-              style={styles.currentLocationButton}
-            >
-              {locationLoading ? (
-                <ActivityIndicator
-                  size="small"
-                  color={colors.textInverse}
-                />
-              ) : (
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: spacing.md }}>
+              <TouchableOpacity
+                onPress={getCurrentLocation}
+                disabled={locationLoading}
+                style={[styles.currentLocationButton, { flex: 1, marginBottom: 0 }]}
+              >
+                {locationLoading ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.textInverse}
+                  />
+                ) : (
+                  <Ionicons
+                    name="locate"
+                    size={18}
+                    color={colors.textInverse}
+                  />
+                )}
+
+                <Text style={styles.currentLocationText}>
+                  {locationLoading
+                    ? 'Acquiring GPS...'
+                    : 'Live GPS Fix'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={openLocationModal}
+                style={[
+                  styles.currentLocationButton,
+                  {
+                    flex: 1,
+                    backgroundColor: colors.surface,
+                    borderWidth: 1.5,
+                    borderColor: colors.primary,
+                    marginBottom: 0,
+                  },
+                ]}
+              >
                 <Ionicons
-                  name="locate"
-                  size={22}
-                  color={colors.textInverse}
+                  name="create-outline"
+                  size={18}
+                  color={colors.primary}
                 />
-              )}
-
-              <Text style={styles.currentLocationText}>
-                {locationLoading
-                  ? 'Detecting Current Location...'
-                  : 'Use Current Location'}
-              </Text>
-            </TouchableOpacity>
+                <Text style={[styles.currentLocationText, { color: colors.primary }]}>
+                  Modify / Area
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {/* LOCATION STATUS */}
 
