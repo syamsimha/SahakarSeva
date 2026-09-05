@@ -10,10 +10,15 @@ class WorkerService {
     maxDistanceKm?: number;
     minRating?: number;
     availableOnly?: boolean;
+    verifiedOnly?: boolean;
   }): Promise<WorkerProfile[]> {
     return new Promise((resolve) => {
       setTimeout(() => {
         let results = [...this.workers];
+
+        if (filters?.verifiedOnly) {
+          results = results.filter((w) => w.verificationStatus === 'verified');
+        }
 
         if (filters?.searchQuery) {
           const q = filters.searchQuery.toLowerCase();

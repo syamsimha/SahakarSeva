@@ -49,6 +49,7 @@ export const ServiceSearchScreen: React.FC<ServiceSearchScreenProps> = ({
         category: selectedCategory === 'all' ? undefined : selectedCategory,
         minRating: minRating > 0 ? minRating : undefined,
         availableOnly: availableOnly || undefined,
+        verifiedOnly: true,
       });
 
       // Sorting

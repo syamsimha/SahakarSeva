@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
 import { Button } from '../../components/ui';
@@ -8,6 +8,9 @@ import { Ionicons } from '@expo/vector-icons';
 interface HelpSupportScreenProps {
   onBack: () => void;
 }
+
+const HELPDESK_PHONE_NUMBER = '+9118007242527';
+const HELPDESK_DISPLAY_NUMBER = '+91 1800-SAHAKAR (1800-724-2527)';
 
 const faqs = [
   {
@@ -30,13 +33,26 @@ const faqs = [
 
 export const HelpSupportScreen: React.FC<HelpSupportScreenProps> = ({ onBack }) => {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
+  const isCallingRef = useRef(false);
 
   const toggleFaq = (idx: number) => {
     setExpandedIndex(expandedIndex === idx ? null : idx);
   };
 
   const handleHelpline = () => {
-    Alert.alert('Emergency Helpline', 'Connecting to 24x7 Cooperative Call Center: +91 1800-SAHAKAR (Toll-Free)');
+    if (isCallingRef.current) return;
+    isCallingRef.current = true;
+    setTimeout(() => {
+      isCallingRef.current = false;
+    }, 1200);
+
+    const telUrl = `tel:${HELPDESK_PHONE_NUMBER}`;
+    Linking.openURL(telUrl).catch(() => {
+      Alert.alert(
+        '24x7 Cooperative Helpdesk',
+        `Connecting to 24x7 Cooperative Call Center:\n${HELPDESK_DISPLAY_NUMBER}\n\nToll-Free assistance in English, Hindi, Kannada & Telugu.`
+      );
+    });
   };
 
   const handleReport = () => {
@@ -48,26 +64,37 @@ export const HelpSupportScreen: React.FC<HelpSupportScreenProps> = ({ onBack }) 
       <Header title="Help & Support Desk" showBack onBack={onBack} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Support Channels Hero */}
-        <View style={styles.heroCard}>
+        {/* Support Channels Hero - Clickable 24x7 Helpdesk Card */}
+        <TouchableOpacity
+          activeOpacity={0.88}
+          onPress={handleHelpline}
+          style={styles.heroCard}
+        >
           <View style={styles.heroLeft}>
             <View style={styles.headsetIcon}>
               <Ionicons name="headset" size={28} color={colors.primary} />
             </View>
             <View style={{ flex: 1, marginLeft: spacing.md }}>
-              <Text style={styles.heroTitle}>24x7 Cooperative Helpdesk</Text>
-              <Text style={styles.heroSub}>Toll-free assistance in English, Hindi & Telugu</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.heroTitle}>24x7 Cooperative Helpdesk</Text>
+                <View style={styles.callNowPill}>
+                  <Ionicons name="call" size={10} color="#FFFFFF" />
+                  <Text style={styles.callNowPillText}>CALL NOW</Text>
+                </View>
+              </View>
+              <Text style={styles.heroPhone}>{HELPDESK_DISPLAY_NUMBER}</Text>
+              <Text style={styles.heroSub}>Toll-free assistance in English, Hindi, Kannada & Telugu</Text>
             </View>
           </View>
           <Button
-            title="Call Helpline"
+            title={`Call Helpline • 1800-SAHAKAR`}
             icon="call"
             onPress={handleHelpline}
             variant="primary"
             size="sm"
             style={{ marginTop: spacing.md }}
           />
-        </View>
+        </TouchableOpacity>
 
         {/* Quick Help Topics */}
         <Text style={styles.sectionTitle}>Help Topics</Text>
@@ -80,7 +107,13 @@ export const HelpSupportScreen: React.FC<HelpSupportScreenProps> = ({ onBack }) 
           ].map((t, i) => (
             <TouchableOpacity
               key={i}
-              onPress={() => Alert.alert(t.title, `Help articles and automated resolution for ${t.title}.`)}
+              onPress={() => {
+                if (t.title === 'Emergency SOS') {
+                  handleHelpline();
+                } else {
+                  Alert.alert(t.title, `Help articles and automated resolution for ${t.title}.`);
+                }
+              }}
               style={styles.topicCard}
             >
               <Ionicons name={t.icon as any} size={22} color={colors.primary} />
@@ -143,8 +176,13 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
   heroLeft: {
     flexDirection: 'row',
@@ -161,6 +199,26 @@ const styles = StyleSheet.create({
   heroTitle: {
     ...typography.h4,
     color: colors.text,
+  },
+  heroPhone: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: 2,
+  },
+  callNowPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.success,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: borderRadius.round,
+  },
+  callNowPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   heroSub: {
     fontSize: 11,

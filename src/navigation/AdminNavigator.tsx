@@ -71,6 +71,7 @@ export const AdminNavigator: React.FC = () => {
             onNavigateToForecast={() => setShowForecast(true)}
             onNavigateToNotifications={() => setShowNotifications(true)}
             onNavigateToTracking={(id) => setTrackingBookingId(id)}
+            onNavigateToHelp={() => setShowHelp(true)}
           />
         );
       case 'workers':

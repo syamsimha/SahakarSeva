@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
 import { Button, Badge } from '../../components/ui';
@@ -21,7 +21,12 @@ export const WorkerWelfareScreen: React.FC<WorkerWelfareScreenProps> = ({ onBack
   };
 
   const handleHelpline = () => {
-    Alert.alert('Cooperative Helpdesk', 'Connecting to 24x7 Labour Welfare Officer at +91 1800-SAHAKAR');
+    Linking.openURL('tel:+9118007242527').catch(() => {
+      Alert.alert(
+        'Cooperative Helpdesk',
+        'Connecting to 24x7 Labour Welfare Officer at +91 1800-SAHAKAR (+91 1800 724 2527)'
+      );
+    });
   };
 
   return (

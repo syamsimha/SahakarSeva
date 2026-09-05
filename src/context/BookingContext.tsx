@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Booking, BookingStatus } from '../types';
-import { bookingService } from '../services';
+import { bookingService, workerService } from '../services';
 
 interface BookingContextType {
   bookings: Booking[];
@@ -81,6 +81,14 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
     note?: string
   ) => {
+    // Strictly prevent assigning work to unverified workers
+    const workerProfile = await workerService.getWorkerById(worker.id);
+    if (workerProfile && workerProfile.verificationStatus !== 'verified') {
+      throw new Error(
+        `Cannot assign unverified worker ${worker.name}. Worker verification status is "${workerProfile.verificationStatus}". Only verified cooperative members can receive work assignments.`
+      );
+    }
+
     const updated = await bookingService.assignWorkerToBooking(bookingId, worker, note);
     if (updated) {
       setBookings((prev) =>

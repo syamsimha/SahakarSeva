@@ -28,6 +28,7 @@ interface AdminDashboardScreenProps {
   onNavigateToForecast: () => void;
   onNavigateToNotifications: () => void;
   onNavigateToTracking?: (bookingId: string) => void;
+  onNavigateToHelp?: () => void;
 }
 
 export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
@@ -37,6 +38,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   onNavigateToForecast,
   onNavigateToNotifications,
   onNavigateToTracking,
+  onNavigateToHelp,
 }) => {
   const { t } = useLanguage();
   const { bookings, assignWorker, updateStatus } = useBookings();
@@ -75,9 +77,11 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   }, [bookings]);
 
   // Cooperative rule: workers on active jobs are NOT displayed for new job assignments.
-  // They are only displayed after their current work is completed.
+  // Statutory rule: unverified workers can NEVER be assigned work.
   const availableWorkers = useMemo(() => {
-    return allWorkers.filter((w) => !busyWorkerIds.has(w.id));
+    return allWorkers.filter(
+      (w) => w.verificationStatus === 'verified' && !busyWorkerIds.has(w.id)
+    );
   }, [allWorkers, busyWorkerIds]);
 
   const pendingBookings = useMemo(() => {
@@ -98,6 +102,13 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
 
   const handleAssignWorkerToBooking = async (worker: WorkerProfile) => {
     if (!assigningBooking) return;
+    if (worker.verificationStatus !== 'verified') {
+      Alert.alert(
+        'Verification Required',
+        `Cannot assign work to ${worker.name}. Worker status is "${worker.verificationStatus}". Only verified cooperative members are permitted to receive job allocations.`
+      );
+      return;
+    }
     try {
       await assignWorker(
         assigningBooking.id,
@@ -116,8 +127,8 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
         'Worker Assigned Successfully',
         `Successfully allocated ${worker.name} (${worker.primarySkill}) to Booking ${code}. Worker is now marked active on this job and cannot be assigned another job until completion.`
       );
-    } catch (err) {
-      Alert.alert('Error', 'Unable to assign worker.');
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Unable to assign worker.');
     }
   };
 
@@ -562,9 +573,9 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
 
           {/* Allocation Rule Alert Bar */}
           <View style={styles.allocationRuleBar}>
-            <Ionicons name="information-circle" size={16} color={colors.primary} />
+            <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
             <Text style={styles.allocationRuleBarText}>
-              <Text style={{ fontWeight: '700' }}>Cooperative Dispatch Rule:</Text> Only workers with NO active job are displayed for assignment ({availableWorkers.length} idle). When a job is assigned, the worker is locked to it and hidden from the roster until the work is completed.
+              <Text style={{ fontWeight: '700' }}>Cooperative Dispatch Rule:</Text> Only verified workers with NO active job are displayed for assignment ({availableWorkers.length} available). Unverified workers are strictly prohibited from receiving work assignments until cleared in the Verification Queue.
             </Text>
           </View>
 
@@ -779,6 +790,55 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             <Text style={styles.adminToolTitle}>AI Forecast</Text>
             <Text style={styles.adminToolSub}>Ward allocation</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* 24x7 Federation Helpdesk & Call Card */}
+        <View style={styles.adminHelpBanner}>
+          <View style={styles.adminHelpBannerLeft}>
+            <View style={styles.adminHelpBadge}>
+              <Ionicons name="headset" size={24} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.adminHelpBannerTitle}>24x7 Cooperative Helpdesk</Text>
+                <View style={styles.adminHelpLivePill}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.adminHelpLiveText}>ACTIVE 24x7</Text>
+                </View>
+              </View>
+              <Text style={styles.adminHelpPhone}>+91 1800-SAHAKAR (1800-724-2527)</Text>
+              <Text style={styles.adminHelpBannerSub}>
+                Toll-free state federation escalation, support & FAQs
+              </Text>
+            </View>
+          </View>
+          <View style={styles.adminHelpBannerBtns}>
+            <TouchableOpacity
+              style={styles.adminHelpDirectCallBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                Linking.openURL('tel:+9118007242527').catch(() => {
+                  Alert.alert(
+                    '24x7 Cooperative Helpdesk',
+                    'Connecting to Toll-Free Helpline:\n+91 1800-SAHAKAR (+91 1800 724 2527)\n\nToll-free assistance available 24x7.'
+                  );
+                });
+              }}
+            >
+              <Ionicons name="call" size={15} color="#FFFFFF" />
+              <Text style={styles.adminHelpDirectCallBtnText}>Call 24x7 Helpdesk</Text>
+            </TouchableOpacity>
+            {onNavigateToHelp && (
+              <TouchableOpacity
+                style={styles.adminHelpFaqOutlineBtn}
+                activeOpacity={0.8}
+                onPress={onNavigateToHelp}
+              >
+                <Ionicons name="help-circle-outline" size={15} color={colors.primary} />
+                <Text style={styles.adminHelpFaqOutlineBtnText}>Help & FAQs</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </ScrollView>
 
@@ -1026,24 +1086,24 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             <View style={styles.modalNoticeBanner}>
               <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalNoticeTitle}>Single Active Job Policy Enforced</Text>
+                <Text style={styles.modalNoticeTitle}>Verified Workers & Single Active Job Rule</Text>
                 <Text style={styles.modalNoticeSub}>
-                  Displaying {availableWorkers.length} idle workers. {busyWorkerIds.size} workers with ongoing jobs are hidden to prevent duplicate dispatch, and will be displayed again once work is completed.
+                  Displaying {availableWorkers.length} verified idle workers. Unverified workers and workers currently engaged on active jobs are excluded to guarantee compliance and service standards.
                 </Text>
               </View>
             </View>
 
             <Text style={styles.modalAvailableHeader}>
-              Select Idle Cooperative Worker ({availableWorkers.length} available)
+              Select Verified Cooperative Worker ({availableWorkers.length} available)
             </Text>
 
             <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
               {availableWorkers.length === 0 ? (
                 <View style={styles.emptyWorkerBoxDashboard}>
-                  <Ionicons name="people-outline" size={36} color={colors.textMuted} />
-                  <Text style={styles.emptyWorkerTitleDashboard}>No Idle Workers Available</Text>
+                  <Ionicons name="shield-outline" size={36} color={colors.textMuted} />
+                  <Text style={styles.emptyWorkerTitleDashboard}>No Verified Idle Workers Available</Text>
                   <Text style={styles.emptyWorkerSubDashboard}>
-                    All verified cooperative members currently have an active job. Complete pending jobs to release workers back into the available pool.
+                    All verified cooperative members are currently on active jobs, or no worker has completed federation verification yet. Unverified workers cannot receive assignments.
                   </Text>
                 </View>
               ) : (
@@ -1342,6 +1402,101 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  adminHelpBanner: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.primaryLight,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  adminHelpBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  adminHelpBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminHelpBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  adminHelpLivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: borderRadius.round,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  adminHelpLiveText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#15803D',
+  },
+  adminHelpPhone: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: 2,
+  },
+  adminHelpBannerSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  adminHelpBannerBtns: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: spacing.sm,
+  },
+  adminHelpDirectCallBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 9,
+    borderRadius: borderRadius.md,
+  },
+  adminHelpDirectCallBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  adminHelpFaqOutlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  adminHelpFaqOutlineBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
   },
   bookingsHubCard: {
     flexDirection: 'row',

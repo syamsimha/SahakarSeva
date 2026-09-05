@@ -44,7 +44,7 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
   const [workers, setWorkers] = useState<WorkerProfile[]>([]);
 
   React.useEffect(() => {
-    workerService.getWorkers({ availableOnly: true }).then((data) => setWorkers(data.slice(0, 3)));
+    workerService.getWorkers({ availableOnly: true, verifiedOnly: true }).then((data) => setWorkers(data.slice(0, 3)));
   }, []);
 
   // Active / Current Booking

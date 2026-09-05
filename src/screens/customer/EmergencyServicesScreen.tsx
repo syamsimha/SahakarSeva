@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Linking,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
@@ -148,9 +149,23 @@ export const EmergencyServicesScreen: React.FC<EmergencyServicesScreenProps> = (
             size="lg"
             fullWidth
           />
-          <Text style={styles.helplineText}>
-            Or call Cooperative Emergency Desk: +91 1800-SAHAKAR (Toll-Free)
-          </Text>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              Linking.openURL('tel:+9118007242527').catch(() => {
+                Alert.alert(
+                  'Emergency Helpline',
+                  'Connecting to 24x7 Cooperative Call Center:\n+91 1800-SAHAKAR (+91 1800 724 2527)'
+                );
+              });
+            }}
+            style={{ marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          >
+            <Ionicons name="call" size={14} color={colors.primary} />
+            <Text style={styles.helplineText}>
+              Or call Cooperative Emergency Desk: +91 1800-SAHAKAR (Toll-Free)
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>

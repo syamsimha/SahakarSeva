@@ -50,9 +50,11 @@ export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack
   }, [bookings]);
 
   // Cooperative rule: workers currently on a job are NOT displayed for new job assignments.
-  // They are only displayed after their current work is completed.
+  // Statutory rule: unverified workers can NEVER be assigned work.
   const availableWorkers = useMemo(() => {
-    return allWorkers.filter((w) => !busyWorkerIds.has(w.id));
+    return allWorkers.filter(
+      (w) => w.verificationStatus === 'verified' && !busyWorkerIds.has(w.id)
+    );
   }, [allWorkers, busyWorkerIds]);
 
   const filtered = bookings.filter((b) => {
@@ -77,6 +79,13 @@ export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack
 
   const handleAssignWorkerToBooking = async (worker: WorkerProfile) => {
     if (!assigningBooking) return;
+    if (worker.verificationStatus !== 'verified') {
+      Alert.alert(
+        'Verification Required',
+        `Cannot assign work to ${worker.name}. Worker status is "${worker.verificationStatus}". Only verified cooperative members can be assigned jobs.`
+      );
+      return;
+    }
     try {
       await assignWorker(
         assigningBooking.id,
@@ -95,8 +104,8 @@ export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack
         'Worker Assigned Successfully',
         `Successfully allocated ${worker.name} (${worker.primarySkill}) to Booking ${code}. Worker is now marked active on this job and cannot be assigned another job until completion.`
       );
-    } catch (err) {
-      Alert.alert('Error', 'Unable to assign worker.');
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Unable to assign worker.');
     }
   };
 
@@ -231,12 +240,12 @@ export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack
             <View style={styles.ruleBanner}>
               <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
               <Text style={styles.ruleBannerText}>
-                Active Job Rule: Only idle workers are shown ({availableWorkers.length} available). Workers currently on a job ({busyWorkerIds.size} busy) are hidden and will reappear once their work is completed.
+                Verified & Idle Rule: Only verified idle workers are shown ({availableWorkers.length} available). Unverified workers and workers currently on a job ({busyWorkerIds.size} busy) cannot be assigned work.
               </Text>
             </View>
 
             <Text style={styles.selectWorkerHeader}>
-              Available Workers ({availableWorkers.length})
+              Available Verified Workers ({availableWorkers.length})
             </Text>
 
             <FlatList

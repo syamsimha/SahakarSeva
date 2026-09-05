@@ -112,6 +112,13 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
   // Handle Assign Work
   const handleAssignBooking = async (booking: Booking) => {
     if (!assigningWorker) return;
+    if (assigningWorker.verificationStatus !== 'verified') {
+      Alert.alert(
+        'Worker Unverified',
+        `Cannot assign jobs to ${assigningWorker.name}. Worker verification status is "${assigningWorker.verificationStatus}". Only verified cooperative members can receive work assignments.`
+      );
+      return;
+    }
     if (busyWorkerMap.has(assigningWorker.id)) {
       Alert.alert(
         'Worker Unavailable',
@@ -137,8 +144,8 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
         'Job Assigned Successfully',
         `Booking ${booking.bookingCode} (${booking.serviceTitle}) has been assigned to ${workerName}. Status updated to Accepted.`
       );
-    } catch (err) {
-      Alert.alert('Error', 'Unable to assign job to worker.');
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Unable to assign job to worker.');
     }
   };
 
@@ -315,6 +322,22 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                   <Ionicons name="lock-closed" size={13} color="#D97706" />
                   <Text style={styles.busyJobDisabledBtnText}>
                     On Active Job ({busyWorkerMap.get(item.id)?.bookingCode})
+                  </Text>
+                </TouchableOpacity>
+              ) : item.verificationStatus !== 'verified' ? (
+                <TouchableOpacity
+                  style={styles.unverifiedWorkerBtn}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Alert.alert(
+                      'Worker Verification Required',
+                      `Cannot assign works to ${item.name}. Verification status is "${item.verificationStatus.toUpperCase()}". Cooperative regulations strictly prohibit assigning jobs to unverified workers. Please approve their documents in the Verification Queue first.`
+                    );
+                  }}
+                >
+                  <Ionicons name="shield-outline" size={13} color="#DC2626" />
+                  <Text style={styles.unverifiedWorkerBtnText}>
+                    Unverified ({item.verificationStatus})
                   </Text>
                 </TouchableOpacity>
               ) : (
@@ -721,6 +744,22 @@ const styles = StyleSheet.create({
   },
   busyJobDisabledBtnText: {
     color: '#B45309',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  unverifiedWorkerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: borderRadius.sm,
+  },
+  unverifiedWorkerBtnText: {
+    color: '#B91C1C',
     fontWeight: '700',
     fontSize: 11,
   },

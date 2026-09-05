@@ -253,7 +253,7 @@ export const BookingFlowScreen: React.FC<BookingFlowScreenProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    workerService.getWorkers({ category: selectedCategory }).then((data) => {
+    workerService.getWorkers({ category: selectedCategory, verifiedOnly: true }).then((data) => {
       setWorkersList(data);
       if (!initialWorkerId && data.length > 0) {
         setSelectedWorkerId(data[0].id);
