@@ -13,7 +13,7 @@ import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header, SearchBar } from '../../components/common';
 import { Avatar, Badge, Button, EmptyState } from '../../components/ui';
 import { mockWorkers } from '../../data';
-import { WorkerProfile, WorkerVerificationStatus } from '../../types';
+import { WorkerProfile, WorkerVerificationStatus, WorkerDocument } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { workerService } from '../../services';
 import { useBookings } from '../../context/BookingContext';
@@ -31,6 +31,8 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
 
   // Selected Worker Dossier Modal
   const [selectedWorker, setSelectedWorker] = useState<WorkerProfile | null>(null);
+  const [selectedDocAudit, setSelectedDocAudit] = useState<{ doc: WorkerDocument; worker: WorkerProfile } | null>(null);
+  const [docAuditValidated, setDocAuditValidated] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   const loadWorkers = async () => {
@@ -65,16 +67,6 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
     Linking.openURL(`sms:${phone.replace(/[^0-9+]/g, '')}?body=${msg}`).catch(() => {
       showFeedback(`Triggered SMS messenger for ${phone}`);
     });
-  };
-
-  const handleToggleAvailability = async (worker: WorkerProfile) => {
-    const newStatus = !worker.isAvailable;
-    await workerService.updateAvailability(worker.id, newStatus);
-    setWorkers((prev) =>
-      prev.map((w) => (w.id === worker.id ? { ...w, isAvailable: newStatus } : w))
-    );
-    setSelectedWorker((prev) => (prev ? { ...prev, isAvailable: newStatus } : null));
-    showFeedback(`${worker.name} is now marked ${newStatus ? 'ONLINE / AVAILABLE' : 'OFFLINE / STANDBY'}`);
   };
 
   const handleUpdateStatus = async (worker: WorkerProfile, status: WorkerVerificationStatus) => {
@@ -164,6 +156,33 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
 
               <Text style={styles.workerSkill}>{item.primarySkill} • {item.experienceYears} yrs exp</Text>
               <Text style={styles.coopName}>{item.cooperativeName}</Text>
+
+              {/* Authenticated 2 Documents Badges (Tap to View) */}
+              <View style={styles.docsChipRow}>
+                {item.documents
+                  .filter((d) => d.type === 'aadhaar' || d.type === 'skill_certificate')
+                  .map((doc, dIdx) => (
+                    <TouchableOpacity
+                      key={dIdx}
+                      style={styles.docChip}
+                      onPress={() => {
+                        setSelectedDocAudit({ doc, worker: item });
+                        setDocAuditValidated(doc.status === 'verified');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={doc.type === 'aadhaar' ? 'card-outline' : 'ribbon-outline'}
+                        size={11}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.docChipText}>
+                        {doc.type === 'aadhaar' ? 'ID Proof' : 'Skill Cert'}
+                      </Text>
+                      <Ionicons name="eye-outline" size={11} color={colors.primary} />
+                    </TouchableOpacity>
+                  ))}
+              </View>
 
               <View style={styles.metricRow}>
                 <Text style={styles.metricText}>⭐ {item.rating > 0 ? item.rating.toFixed(1) : 'New'}</Text>
@@ -291,16 +310,50 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                     <Text style={styles.detailLine}>• Completed Guild Jobs: {selectedWorker.completedJobsCount} operations</Text>
                   </View>
 
-                  {/* Availability Toggle */}
+                  {/* Authenticated Verification Documents (ID Proof & Skill Certificate only) */}
+                  {(() => {
+                    const docList = (selectedWorker.documents || []).filter(
+                      (doc) => doc.type === 'aadhaar' || doc.type === 'skill_certificate'
+                    );
+                    return (
+                      <View style={styles.dossierSection}>
+                        <Text style={styles.sectionLabel}>Authenticated Verification Proofs ({docList.length}) - Tap to Inspect</Text>
+                        {docList.map((doc, dIdx) => (
+                          <TouchableOpacity
+                            key={dIdx}
+                            style={styles.docItemRow}
+                            onPress={() => {
+                              setSelectedDocAudit({ doc, worker: selectedWorker });
+                              setDocAuditValidated(doc.status === 'verified');
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons
+                              name={doc.type === 'aadhaar' ? 'card' : 'ribbon'}
+                              size={16}
+                              color={colors.primary}
+                            />
+                            <View style={{ flex: 1, marginLeft: 8 }}>
+                              <Text style={styles.docItemTitle}>{doc.name}</Text>
+                              <Text style={styles.docItemSub}>
+                                {doc.type === 'aadhaar' ? 'GOVERNMENT ID PROOF' : 'TRADE SKILL CERTIFICATE'} • {doc.status.toUpperCase()}
+                              </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Badge
+                                label={doc.status === 'verified' ? 'Verified' : 'Attached'}
+                                status={doc.status === 'verified' ? 'verified' : 'pending'}
+                              />
+                              <Ionicons name="eye-outline" size={16} color={colors.primary} />
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    );
+                  })()}
+
+                  {/* Actions */}
                   <View style={styles.actionBox}>
-                    <Button
-                      title={selectedWorker.isAvailable ? 'Set Worker Standby (Offline)' : 'Set Worker Active (Online)'}
-                      icon={selectedWorker.isAvailable ? 'pause-circle-outline' : 'play-circle-outline'}
-                      variant={selectedWorker.isAvailable ? 'outline' : 'primary'}
-                      onPress={() => handleToggleAvailability(selectedWorker)}
-                      fullWidth
-                      style={{ marginBottom: spacing.sm }}
-                    />
 
                     {selectedWorker.verificationStatus !== 'verified' && (
                       <Button
@@ -338,6 +391,108 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                       fullWidth
                       style={{ borderColor: colors.danger, marginTop: spacing.sm }}
                       textStyle={{ color: colors.danger }}
+                    />
+                  </View>
+                </ScrollView>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Document Inspection & Verification Proof Modal */}
+      <Modal
+        visible={Boolean(selectedDocAudit)}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedDocAudit(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '92%' }]}>
+            {selectedDocAudit && (
+              <>
+                <View style={styles.modalHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalTitle}>Statutory Document Viewer</Text>
+                    <Text style={styles.modalSub}>{selectedDocAudit.worker.name} • {selectedDocAudit.worker.primarySkill}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setSelectedDocAudit(null)}>
+                    <Ionicons name="close" size={24} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {/* Document Badge Card */}
+                  <View style={styles.docInspectCard}>
+                    <View style={styles.docHeaderRow}>
+                      <Ionicons
+                        name={selectedDocAudit.doc.type === 'aadhaar' ? 'card' : 'ribbon'}
+                        size={24}
+                        color={colors.primary}
+                      />
+                      <View style={{ flex: 1, marginLeft: 8 }}>
+                        <Text style={styles.docInspectionTitle}>{selectedDocAudit.doc.name}</Text>
+                        <Text style={styles.docType}>
+                          CATEGORY: {selectedDocAudit.doc.type === 'aadhaar' ? 'GOVERNMENT ID PROOF (AADHAAR)' : 'TRADE SKILL QUALIFICATION'}
+                        </Text>
+                      </View>
+                      <Badge
+                        status={docAuditValidated ? 'verified' : 'pending'}
+                        label={docAuditValidated ? 'VERIFIED' : 'ATTACHED'}
+                      />
+                    </View>
+
+                    {/* Certificate Mock Visual Preview Box */}
+                    <View style={styles.certificatePreviewBox}>
+                      <View style={styles.certEmblemRow}>
+                        <Ionicons
+                          name={selectedDocAudit.doc.type === 'aadhaar' ? 'finger-print' : 'school'}
+                          size={28}
+                          color={colors.primary}
+                        />
+                        <Text style={styles.certGovtHeading}>
+                          {selectedDocAudit.doc.type === 'aadhaar'
+                            ? 'Unique Identification Authority of India / Govt ID'
+                            : 'National Council for Vocational Training (NCVT) / ITI'}
+                        </Text>
+                      </View>
+                      <Text style={styles.certSerial}>
+                        SERIAL NO: DOC-AP-2024-{selectedDocAudit.doc.id.toUpperCase()}-SEC
+                      </Text>
+                      <View style={styles.certDetailsGrid}>
+                        <Text style={styles.certDetailLine}>• Holder: <Text style={{ fontWeight: '700' }}>{selectedDocAudit.worker.name}</Text></Text>
+                        <Text style={styles.certDetailLine}>• Affiliated Guild: <Text style={{ fontWeight: '600' }}>{selectedDocAudit.worker.cooperativeName}</Text></Text>
+                        <Text style={styles.certDetailLine}>• Trade Discipline: <Text style={{ fontWeight: '600' }}>{selectedDocAudit.worker.primarySkill}</Text></Text>
+                        <Text style={styles.certDetailLine}>• Verification Status: <Text style={{ fontWeight: '700', color: colors.success }}>Official Authenticated Record ✅</Text></Text>
+                        <Text style={styles.certDetailLine}>• Digital Tamper Hash: SHA256:7f8a92bc18e3d540</Text>
+                        <Text style={styles.certDetailLine}>• Date Uploaded: {new Date(selectedDocAudit.doc.uploadedAt).toLocaleDateString('en-IN')}</Text>
+                      </View>
+                      <View style={styles.certStamp}>
+                        <Ionicons name="checkmark-done-circle" size={18} color={colors.success} />
+                        <Text style={styles.certStampText}>Visakhapatnam Cooperative Hologram Authenticated</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Document Actions */}
+                  <View style={{ marginTop: spacing.md, gap: 8 }}>
+                    <Button
+                      title={docAuditValidated ? 'Document Validated & Legible ✅' : 'Validate & Mark Legible'}
+                      icon="checkmark-circle-outline"
+                      variant="primary"
+                      onPress={() => {
+                        setDocAuditValidated(true);
+                        showFeedback(`Marked ${selectedDocAudit.doc.name} as verified!`);
+                        setTimeout(() => setSelectedDocAudit(null), 1000);
+                      }}
+                      fullWidth
+                    />
+
+                    <Button
+                      title="Close Document Viewer"
+                      variant="outline"
+                      onPress={() => setSelectedDocAudit(null)}
+                      fullWidth
                     />
                   </View>
                 </ScrollView>
@@ -587,6 +742,134 @@ const styles = StyleSheet.create({
   },
   actionBox: {
     marginTop: spacing.xs,
+  },
+  docsChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 4,
+  },
+  docChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+    gap: 3,
+  },
+  docChipText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  docItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  docItemTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  docItemSub: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  docInspectCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.xs,
+  },
+  docHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  docInspectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  docType: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: 2,
+  },
+  certificatePreviewBox: {
+    backgroundColor: '#FAF5EE',
+    borderWidth: 2,
+    borderColor: '#D4AF37',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  certEmblemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: spacing.xs,
+  },
+  certGovtHeading: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#78350F',
+    letterSpacing: 0.5,
+    flex: 1,
+  },
+  certSerial: {
+    fontSize: 9,
+    fontFamily: 'monospace',
+    color: '#92400E',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginBottom: spacing.sm,
+    fontWeight: '700',
+  },
+  certDetailsGrid: {
+    gap: 4,
+    marginBottom: spacing.sm,
+  },
+  certDetailLine: {
+    fontSize: 11,
+    color: '#374151',
+  },
+  certStamp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC',
+    borderWidth: 1,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  certStampText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#15803D',
   },
 });
 
