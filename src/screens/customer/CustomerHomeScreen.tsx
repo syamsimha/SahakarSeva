@@ -63,7 +63,7 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
         {/* Welcome & Search Bar */}
         <View style={styles.welcomeSection}>
           <Text style={styles.greetingText}>{t('greeting')}, {user?.name.split(' ')[0] || 'Member'} 👋</Text>
-          <Text style={styles.heroSubtitle}>Find certified cooperative workers in your area</Text>
+          <Text style={styles.heroSubtitle}>{t('hero_subtitle')}</Text>
 
           <SearchBar
             value={searchQuery}
@@ -85,10 +85,10 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
           </View>
           <View style={styles.emergencyTexts}>
             <View style={styles.emergencyBadge}>
-              <Text style={styles.emergencyBadgeText}>PRIORITY 24x7</Text>
+              <Text style={styles.emergencyBadgeText}>{t('priority_247')}</Text>
             </View>
-            <Text style={styles.emergencyTitle}>Emergency Cooperative Response</Text>
-            <Text style={styles.emergencySubtitle}>Electrician & plumber available in 20-30 mins</Text>
+            <Text style={styles.emergencyTitle}>{t('emergency_banner_title')}</Text>
+            <Text style={styles.emergencySubtitle}>{t('emergency_banner_subtitle')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.danger} />
         </TouchableOpacity>
@@ -99,10 +99,10 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
             <View style={styles.sectionHeader}>
               <View style={styles.activeTitleRow}>
                 <View style={styles.pulseGreenDot} />
-                <Text style={styles.sectionTitle}>Current Active Booking</Text>
+                <Text style={styles.sectionTitle}>{t('active_booking_tracking')}</Text>
               </View>
               <TouchableOpacity onPress={onNavigateToBookings}>
-                <Text style={styles.seeAllText}>Track</Text>
+                <Text style={styles.seeAllText}>{t('view_details')}</Text>
               </TouchableOpacity>
             </View>
 
@@ -137,14 +137,14 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
             style={styles.viewMoreServicesBtn}
             onPress={() => onNavigateToServices()}
           >
-            <Text style={styles.viewMoreText}>+ View 4 More Cooperative Categories</Text>
+            <Text style={styles.viewMoreText}>{t('view_more_categories')}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Cooperative Map Geo-Spatial Preview */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Workers Near Your Cooperative Zone</Text>
+            <Text style={styles.sectionTitle}>{t('workers_near_zone')}</Text>
             <Text style={styles.zoneText}>Indiranagar Cluster</Text>
           </View>
           <MapPlaceholder height={160} workerCount={8} />
@@ -173,10 +173,8 @@ export const CustomerHomeScreen: React.FC<CustomerHomeScreenProps> = ({
         <View style={styles.guaranteeCard}>
           <Ionicons name="shield-checkmark" size={32} color={colors.primary} />
           <View style={styles.guaranteeContent}>
-            <Text style={styles.guaranteeTitle}>The Cooperative Promise</Text>
-            <Text style={styles.guaranteeText}>
-              Every rupee paid directly supports worker welfare funds, pension contributions, and zero middleman exploitation.
-            </Text>
+            <Text style={styles.guaranteeTitle}>{t('cooperative_promise_title')}</Text>
+            <Text style={styles.guaranteeText}>{t('cooperative_promise_desc')}</Text>
           </View>
         </View>
       </ScrollView>
