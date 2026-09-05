@@ -7,15 +7,18 @@ import {
   TouchableOpacity,
   Modal,
   Linking,
+  FlatList,
+  Alert,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header, AddWorkerModal } from '../../components/common';
 import { StatCard } from '../../components/cards';
-import { Button, Badge } from '../../components/ui';
+import { Button, Badge, Avatar } from '../../components/ui';
 import { mockAdminStats, mockWorkers, mockJobAnalytics, JobAnalytics } from '../../data';
 import { useBookings } from '../../context/BookingContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { Booking, BookingStatus } from '../../types';
+import { workerService } from '../../services';
+import { Booking, BookingStatus, WorkerProfile } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
 interface AdminDashboardScreenProps {
@@ -36,7 +39,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   onNavigateToTracking,
 }) => {
   const { t } = useLanguage();
-  const { bookings } = useBookings();
+  const { bookings, assignWorker, updateStatus } = useBookings();
   const stats = mockAdminStats;
 
   // Real-time live updating state for jobs and district aggregates
@@ -49,6 +52,87 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   const [jobFilter, setJobFilter] = useState<'all' | 'highest_disbursed' | 'most_consumers'>('all');
   const [showAddWorkerModal, setShowAddWorkerModal] = useState(false);
   const [trackingBooking, setTrackingBooking] = useState<Booking | null>(null);
+  const [allWorkers, setAllWorkers] = useState<WorkerProfile[]>([]);
+  const [assigningBooking, setAssigningBooking] = useState<Booking | null>(null);
+  const [dispatchTab, setDispatchTab] = useState<'pending' | 'active' | 'all'>('pending');
+
+  useEffect(() => {
+    workerService.getWorkers().then((data) => setAllWorkers(data));
+  }, []);
+
+  // Compute set of worker IDs currently engaged in an active ongoing booking
+  const busyWorkerIds = useMemo(() => {
+    const ids = new Set<string>();
+    bookings.forEach((b) => {
+      if (
+        b.workerId &&
+        (b.status === 'accepted' || b.status === 'on_the_way' || b.status === 'in_progress')
+      ) {
+        ids.add(b.workerId);
+      }
+    });
+    return ids;
+  }, [bookings]);
+
+  // Cooperative rule: workers on active jobs are NOT displayed for new job assignments.
+  // They are only displayed after their current work is completed.
+  const availableWorkers = useMemo(() => {
+    return allWorkers.filter((w) => !busyWorkerIds.has(w.id));
+  }, [allWorkers, busyWorkerIds]);
+
+  const pendingBookings = useMemo(() => {
+    return bookings.filter((b) => b.status === 'requested');
+  }, [bookings]);
+
+  const inFlightBookings = useMemo(() => {
+    return bookings.filter(
+      (b) => b.status === 'accepted' || b.status === 'on_the_way' || b.status === 'in_progress'
+    );
+  }, [bookings]);
+
+  const displayedDispatchBookings = useMemo(() => {
+    if (dispatchTab === 'pending') return pendingBookings;
+    if (dispatchTab === 'active') return inFlightBookings;
+    return bookings;
+  }, [dispatchTab, pendingBookings, inFlightBookings, bookings]);
+
+  const handleAssignWorkerToBooking = async (worker: WorkerProfile) => {
+    if (!assigningBooking) return;
+    try {
+      await assignWorker(
+        assigningBooking.id,
+        {
+          id: worker.id,
+          name: worker.name,
+          primarySkill: worker.primarySkill,
+          phone: worker.phone,
+          cooperativeName: worker.cooperativeName,
+        },
+        `Assigned to ${worker.name} via Admin Dashboard Dispatch`
+      );
+      const code = assigningBooking.bookingCode;
+      setAssigningBooking(null);
+      Alert.alert(
+        'Worker Assigned Successfully',
+        `Successfully allocated ${worker.name} (${worker.primarySkill}) to Booking ${code}. Worker is now marked active on this job and cannot be assigned another job until completion.`
+      );
+    } catch (err) {
+      Alert.alert('Error', 'Unable to assign worker.');
+    }
+  };
+
+  const handleCompleteBooking = async (booking: Booking) => {
+    try {
+      await updateStatus(booking.id, 'completed', 'Job marked completed by District Administrator');
+      Alert.alert(
+        'Job Completed & Worker Released',
+        `Booking ${booking.bookingCode} completed. ${booking.workerName} is now free and will be displayed for new job assignments.`
+      );
+    } catch (err) {
+      Alert.alert('Error', 'Unable to complete booking.');
+    }
+  };
+
   const pendingWorkers = mockWorkers.filter((w) => w.verificationStatus === 'pending');
 
   // Compute live aggregates dynamically from liveJobs
@@ -453,8 +537,197 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
           ))}
         </View>
 
-        {/* District Bookings Hub (Replaced inline bookings listing) */}
+        {/* Real-time District Operations & Worker Dispatch */}
         <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.sectionTitle}>District Job Dispatch</Text>
+                {pendingBookings.length > 0 && (
+                  <View style={styles.urgentPendingBadge}>
+                    <Text style={styles.urgentPendingBadgeText}>
+                      {pendingBookings.length} Needs Worker
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.sectionSubtitle}>
+                Assign available workers • Single-job policy enforced • Re-appears on completion
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onNavigateToBookings}>
+              <Text style={styles.seeAllText}>Console ({bookings.length})</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Allocation Rule Alert Bar */}
+          <View style={styles.allocationRuleBar}>
+            <Ionicons name="information-circle" size={16} color={colors.primary} />
+            <Text style={styles.allocationRuleBarText}>
+              <Text style={{ fontWeight: '700' }}>Cooperative Dispatch Rule:</Text> Only workers with NO active job are displayed for assignment ({availableWorkers.length} idle). When a job is assigned, the worker is locked to it and hidden from the roster until the work is completed.
+            </Text>
+          </View>
+
+          {/* Dispatch Filter Tabs */}
+          <View style={styles.dispatchTabsRow}>
+            <TouchableOpacity
+              onPress={() => setDispatchTab('pending')}
+              style={[styles.dispatchTabPill, dispatchTab === 'pending' && styles.dispatchTabPillActive]}
+            >
+              <Ionicons
+                name="alert-circle"
+                size={13}
+                color={dispatchTab === 'pending' ? '#FFFFFF' : colors.warning}
+                style={{ marginRight: 4 }}
+              />
+              <Text
+                style={[
+                  styles.dispatchTabText,
+                  dispatchTab === 'pending' && styles.dispatchTabTextActive,
+                ]}
+              >
+                Needs Worker ({pendingBookings.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setDispatchTab('active')}
+              style={[styles.dispatchTabPill, dispatchTab === 'active' && styles.dispatchTabPillActive]}
+            >
+              <Ionicons
+                name="construct"
+                size={13}
+                color={dispatchTab === 'active' ? '#FFFFFF' : colors.accent}
+                style={{ marginRight: 4 }}
+              />
+              <Text
+                style={[
+                  styles.dispatchTabText,
+                  dispatchTab === 'active' && styles.dispatchTabTextActive,
+                ]}
+              >
+                In-Flight ({inFlightBookings.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setDispatchTab('all')}
+              style={[styles.dispatchTabPill, dispatchTab === 'all' && styles.dispatchTabPillActive]}
+            >
+              <Text
+                style={[
+                  styles.dispatchTabText,
+                  dispatchTab === 'all' && styles.dispatchTabTextActive,
+                ]}
+              >
+                All Jobs ({bookings.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Booking Cards in Dispatch View */}
+          {displayedDispatchBookings.length === 0 ? (
+            <View style={styles.emptyDispatchBox}>
+              <Ionicons name="checkmark-circle-outline" size={36} color={colors.success} />
+              <Text style={styles.emptyDispatchTitle}>
+                {dispatchTab === 'pending'
+                  ? 'All Citizen Requests Assigned!'
+                  : 'No Active In-Flight Jobs'}
+              </Text>
+              <Text style={styles.emptyDispatchSub}>
+                {dispatchTab === 'pending'
+                  ? 'Every current service booking has an assigned verified cooperative worker.'
+                  : 'There are currently no active in-flight jobs in progress.'}
+              </Text>
+            </View>
+          ) : (
+            displayedDispatchBookings.slice(0, 4).map((b) => (
+              <View key={b.id} style={styles.dispatchCard}>
+                <View style={styles.dispatchCardTop}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.dispatchCardCode}>#{b.bookingCode}</Text>
+                      <Badge status={b.status} />
+                    </View>
+                    <Text style={styles.dispatchCardTitle}>{b.serviceTitle}</Text>
+                  </View>
+                  <Text style={styles.dispatchCardPrice}>₹{b.estimatedAmount}</Text>
+                </View>
+
+                <View style={styles.dispatchMetaRow}>
+                  <Ionicons name="person-outline" size={13} color={colors.textSecondary} />
+                  <Text style={styles.dispatchMetaText}>
+                    {b.customerName} • {b.customerPhone}
+                  </Text>
+                </View>
+
+                <View style={styles.dispatchMetaRow}>
+                  <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
+                  <Text style={styles.dispatchMetaText} numberOfLines={1}>
+                    {b.serviceLocation.addressLine}
+                  </Text>
+                </View>
+
+                <View style={styles.dispatchCardFooter}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.dispatchWorkerStatusLabel}>
+                      {b.status === 'requested' ? 'ALLOCATION STATUS:' : 'ASSIGNED WORKER:'}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.dispatchWorkerStatusVal,
+                        b.status === 'requested' && { color: colors.warning },
+                      ]}
+                    >
+                      {b.status === 'requested'
+                        ? '⚠️ Unassigned (Worker Needed)'
+                        : `${b.workerName} (${b.workerSkill})`}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {b.status === 'requested' ? (
+                      <TouchableOpacity
+                        style={styles.dispatchAssignBtn}
+                        onPress={() => setAssigningBooking(b)}
+                      >
+                        <Ionicons name="person-add" size={14} color="#FFFFFF" />
+                        <Text style={styles.dispatchAssignBtnText}>Assign Worker</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <>
+                        {(b.status === 'accepted' ||
+                          b.status === 'on_the_way' ||
+                          b.status === 'in_progress') && (
+                          <TouchableOpacity
+                            style={styles.dispatchCompleteBtn}
+                            onPress={() => handleCompleteBooking(b)}
+                          >
+                            <Ionicons name="checkmark-done" size={13} color="#FFFFFF" />
+                            <Text style={styles.dispatchCompleteBtnText}>Complete Work</Text>
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                          style={styles.dispatchReassignBtn}
+                          onPress={() => setAssigningBooking(b)}
+                        >
+                          <Text style={styles.dispatchReassignBtnText}>Reassign</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.dispatchTrackBtn}
+                          onPress={() => setTrackingBooking(b)}
+                        >
+                          <Ionicons name="navigate" size={13} color={colors.primary} />
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
+
+          {/* District Bookings Console Navigation Hub Card */}
           <TouchableOpacity
             style={styles.bookingsHubCard}
             onPress={onNavigateToBookings}
@@ -465,13 +738,13 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.bookingsHubTitle}>District Bookings Console</Text>
+                <Text style={styles.bookingsHubTitle}>Open Full Bookings Console</Text>
                 <View style={styles.bookingsCountBadge}>
-                  <Text style={styles.bookingsCountText}>{bookings.length} Active</Text>
+                  <Text style={styles.bookingsCountText}>{bookings.length} Total</Text>
                 </View>
               </View>
               <Text style={styles.bookingsHubSub}>
-                Manage active dispatch, worker assignments & live GPS tracking
+                Filter by date, cooperative guild, status & full dispatch logs
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.primary} />
@@ -724,6 +997,110 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                 </View>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* DISPATCH / ASSIGN WORKER MODAL (Dashboard Direct) */}
+      <Modal visible={Boolean(assigningBooking)} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.statusModalContainer}>
+            <View style={styles.statusModalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.statusModalCode}>Dispatch / Assign Worker</Text>
+                {assigningBooking && (
+                  <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                    Booking #{assigningBooking.bookingCode} • {assigningBooking.serviceTitle}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setAssigningBooking(null)}
+              >
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Rule Notice */}
+            <View style={styles.modalNoticeBanner}>
+              <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalNoticeTitle}>Single Active Job Policy Enforced</Text>
+                <Text style={styles.modalNoticeSub}>
+                  Displaying {availableWorkers.length} idle workers. {busyWorkerIds.size} workers with ongoing jobs are hidden to prevent duplicate dispatch, and will be displayed again once work is completed.
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.modalAvailableHeader}>
+              Select Idle Cooperative Worker ({availableWorkers.length} available)
+            </Text>
+
+            <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+              {availableWorkers.length === 0 ? (
+                <View style={styles.emptyWorkerBoxDashboard}>
+                  <Ionicons name="people-outline" size={36} color={colors.textMuted} />
+                  <Text style={styles.emptyWorkerTitleDashboard}>No Idle Workers Available</Text>
+                  <Text style={styles.emptyWorkerSubDashboard}>
+                    All verified cooperative members currently have an active job. Complete pending jobs to release workers back into the available pool.
+                  </Text>
+                </View>
+              ) : (
+                availableWorkers.map((worker) => {
+                  const isMatchingSkill =
+                    assigningBooking &&
+                    assigningBooking.serviceTitle.toLowerCase().includes(worker.primarySkill.toLowerCase());
+
+                  return (
+                    <View
+                      key={worker.id}
+                      style={[
+                        styles.dashboardWorkerOptionCard,
+                        isMatchingSkill && styles.dashboardWorkerOptionMatch,
+                      ]}
+                    >
+                      <Avatar
+                        name={worker.name}
+                        size={40}
+                        showVerifiedBadge={worker.verificationStatus === 'verified'}
+                      />
+                      <View style={{ flex: 1, marginLeft: spacing.sm, marginRight: spacing.sm }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.dashboardWorkerName}>{worker.name}</Text>
+                          {isMatchingSkill && (
+                            <View style={styles.dashboardMatchTag}>
+                              <Text style={styles.dashboardMatchTagText}>MATCH</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.dashboardWorkerSkill}>
+                          {worker.primarySkill} • {worker.experienceYears} yrs exp
+                        </Text>
+                        <Text style={styles.dashboardWorkerCoop} numberOfLines={1}>
+                          {worker.cooperativeName}
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.dashboardSelectWorkerBtn}
+                        onPress={() => handleAssignWorkerToBooking(worker)}
+                      >
+                        <Text style={styles.dashboardSelectWorkerBtnText}>Assign</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <View style={{ marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                onPress={() => setAssigningBooking(null)}
+              />
+            </View>
           </View>
         </View>
       </Modal>
@@ -1668,5 +2045,305 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
     color: '#B45309',
+  },
+
+  // District Job Dispatch Styles
+  urgentPendingBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  urgentPendingBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  allocationRuleBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginVertical: spacing.xs,
+  },
+  allocationRuleBarText: {
+    flex: 1,
+    fontSize: 11,
+    color: colors.primary,
+    lineHeight: 16,
+  },
+  dispatchTabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: spacing.sm,
+  },
+  dispatchTabPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: borderRadius.round,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dispatchTabPillActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  dispatchTabText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  dispatchTabTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  emptyDispatchBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  emptyDispatchTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  emptyDispatchSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  dispatchCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  dispatchCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
+  dispatchCardCode: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  dispatchCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 2,
+  },
+  dispatchCardPrice: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  dispatchMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 3,
+  },
+  dispatchMetaText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  dispatchCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  dispatchWorkerStatusLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+  },
+  dispatchWorkerStatusVal: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 1,
+  },
+  dispatchAssignBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: borderRadius.sm,
+  },
+  dispatchAssignBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  dispatchCompleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.success,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+  },
+  dispatchCompleteBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  dispatchReassignBtn: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+  },
+  dispatchReassignBtnText: {
+    color: colors.textSecondary,
+    fontWeight: '600',
+    fontSize: 11,
+  },
+  dispatchTrackBtn: {
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Modal Specific
+  modalNoticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: colors.primaryLight,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    marginBottom: spacing.md,
+  },
+  modalNoticeTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    marginBottom: 2,
+  },
+  modalNoticeSub: {
+    fontSize: 11,
+    color: colors.primary,
+    lineHeight: 15,
+  },
+  modalAvailableHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  emptyWorkerBoxDashboard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    marginVertical: spacing.sm,
+  },
+  emptyWorkerTitleDashboard: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  emptyWorkerSubDashboard: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  dashboardWorkerOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  dashboardWorkerOptionMatch: {
+    borderColor: colors.primary,
+    backgroundColor: '#FAF5FF',
+  },
+  dashboardWorkerName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  dashboardMatchTag: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  dashboardMatchTagText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  dashboardWorkerSkill: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  dashboardWorkerCoop: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  dashboardSelectWorkerBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+  },
+  dashboardSelectWorkerBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12,
   },
 });

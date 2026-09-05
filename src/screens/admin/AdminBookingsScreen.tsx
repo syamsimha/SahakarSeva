@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -25,15 +25,35 @@ interface AdminBookingsScreenProps {
 
 export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack, onTrackWorker }) => {
   const { t } = useLanguage();
-  const { bookings, assignWorker } = useBookings();
+  const { bookings, assignWorker, updateStatus } = useBookings();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [availableWorkers, setAvailableWorkers] = useState<WorkerProfile[]>([]);
+  const [allWorkers, setAllWorkers] = useState<WorkerProfile[]>([]);
   const [assigningBooking, setAssigningBooking] = useState<Booking | null>(null);
 
   useEffect(() => {
-    workerService.getWorkers().then((data) => setAvailableWorkers(data));
+    workerService.getWorkers().then((data) => setAllWorkers(data));
   }, []);
+
+  // Compute set of worker IDs currently engaged in an active, non-completed job
+  const busyWorkerIds = useMemo(() => {
+    const ids = new Set<string>();
+    bookings.forEach((b) => {
+      if (
+        b.workerId &&
+        (b.status === 'accepted' || b.status === 'on_the_way' || b.status === 'in_progress')
+      ) {
+        ids.add(b.workerId);
+      }
+    });
+    return ids;
+  }, [bookings]);
+
+  // Cooperative rule: workers currently on a job are NOT displayed for new job assignments.
+  // They are only displayed after their current work is completed.
+  const availableWorkers = useMemo(() => {
+    return allWorkers.filter((w) => !busyWorkerIds.has(w.id));
+  }, [allWorkers, busyWorkerIds]);
 
   const filtered = bookings.filter((b) => {
     const matchesSearch =
@@ -72,11 +92,23 @@ export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack
       const code = assigningBooking.bookingCode;
       setAssigningBooking(null);
       Alert.alert(
-        'Worker Assigned',
-        `Successfully allocated ${worker.name} (${worker.primarySkill}) to Booking ${code}.`
+        'Worker Assigned Successfully',
+        `Successfully allocated ${worker.name} (${worker.primarySkill}) to Booking ${code}. Worker is now marked active on this job and cannot be assigned another job until completion.`
       );
     } catch (err) {
       Alert.alert('Error', 'Unable to assign worker.');
+    }
+  };
+
+  const handleCompleteBooking = async (booking: Booking) => {
+    try {
+      await updateStatus(booking.id, 'completed', 'Job marked completed by District Administrator');
+      Alert.alert(
+        'Job Completed & Worker Released',
+        `Booking ${booking.bookingCode} completed. ${booking.workerName} is now free and will be displayed for new job assignments.`
+      );
+    } catch (err) {
+      Alert.alert('Error', 'Unable to complete booking.');
     }
   };
 
@@ -133,17 +165,32 @@ export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack
               <View style={styles.adminActionStrip}>
                 <View style={styles.assignedWorkerRow}>
                   <Text style={styles.assignedWorkerLabel}>{t('current_worker')}:</Text>
-                  <Text style={styles.assignedWorkerValue}>{item.workerName}</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.reassignBtn}
-                  onPress={() => setAssigningBooking(item)}
-                >
-                  <Ionicons name="person-add-outline" size={14} color="#FFFFFF" />
-                  <Text style={styles.reassignBtnText}>
-                    {item.status === 'requested' ? t('assign_work') : t('reassign_worker')}
+                  <Text style={styles.assignedWorkerValue}>
+                    {item.workerName || 'Unassigned'}
                   </Text>
-                </TouchableOpacity>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {(item.status === 'accepted' || item.status === 'on_the_way' || item.status === 'in_progress') && (
+                    <TouchableOpacity
+                      style={styles.completeBtn}
+                      onPress={() => handleCompleteBooking(item)}
+                    >
+                      <Ionicons name="checkmark-done" size={14} color="#FFFFFF" />
+                      <Text style={styles.completeBtnText}>Complete Work</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.reassignBtn}
+                    onPress={() => setAssigningBooking(item)}
+                  >
+                    <Ionicons name="person-add-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.reassignBtnText}>
+                      {item.status === 'requested' ? t('assign_work') : t('reassign_worker')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
           </View>
@@ -180,14 +227,22 @@ export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack
               </TouchableOpacity>
             </View>
 
+            {/* Rule Banner */}
+            <View style={styles.ruleBanner}>
+              <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
+              <Text style={styles.ruleBannerText}>
+                Active Job Rule: Only idle workers are shown ({availableWorkers.length} available). Workers currently on a job ({busyWorkerIds.size} busy) are hidden and will reappear once their work is completed.
+              </Text>
+            </View>
+
             <Text style={styles.selectWorkerHeader}>
-              Choose Cooperative Worker ({availableWorkers.length} available)
+              Available Workers ({availableWorkers.length})
             </Text>
 
             <FlatList
               data={availableWorkers}
               keyExtractor={(w) => w.id}
-              style={{ maxHeight: 380 }}
+              style={{ maxHeight: 350 }}
               renderItem={({ item: worker }) => {
                 const isMatchingSkill =
                   assigningBooking &&
@@ -222,6 +277,15 @@ export const AdminBookingsScreen: React.FC<AdminBookingsScreenProps> = ({ onBack
                   </View>
                 );
               }}
+              ListEmptyComponent={
+                <View style={styles.emptyWorkerBox}>
+                  <Ionicons name="people-outline" size={32} color={colors.textMuted} />
+                  <Text style={styles.emptyWorkerTitle}>No Idle Workers Available</Text>
+                  <Text style={styles.emptyWorkerSub}>
+                    All verified guild workers currently have an active job assignment. Complete ongoing bookings to release workers back to the available pool.
+                  </Text>
+                </View>
+              }
             />
 
             <View style={styles.modalFooter}>
@@ -428,6 +492,61 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 12,
+  },
+  completeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.success,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+  },
+  completeBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  ruleBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.primaryLight,
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.md,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  ruleBannerText: {
+    flex: 1,
+    fontSize: 11,
+    color: colors.primary,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+  emptyWorkerBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginVertical: spacing.sm,
+  },
+  emptyWorkerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  emptyWorkerSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 16,
   },
   modalFooter: {
     marginTop: spacing.md,

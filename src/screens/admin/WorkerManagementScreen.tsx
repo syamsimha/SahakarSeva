@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -68,6 +68,20 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
     loadWorkers();
   }, []);
 
+  // Map workerId to their active ongoing booking (if any)
+  const busyWorkerMap = useMemo(() => {
+    const map = new Map<string, Booking>();
+    bookings.forEach((b) => {
+      if (
+        b.workerId &&
+        (b.status === 'accepted' || b.status === 'on_the_way' || b.status === 'in_progress')
+      ) {
+        map.set(b.workerId, b);
+      }
+    });
+    return map;
+  }, [bookings]);
+
   // Filtered workers
   const filteredWorkers = workers.filter((w) => {
     const q = searchQuery.toLowerCase();
@@ -98,6 +112,13 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
   // Handle Assign Work
   const handleAssignBooking = async (booking: Booking) => {
     if (!assigningWorker) return;
+    if (busyWorkerMap.has(assigningWorker.id)) {
+      Alert.alert(
+        'Worker Unavailable',
+        `${assigningWorker.name} is already assigned to active job ${busyWorkerMap.get(assigningWorker.id)?.bookingCode}. A worker cannot take multiple jobs simultaneously. Please wait until their work is completed.`
+      );
+      return;
+    }
     try {
       await assignWorker(
         booking.id,
@@ -257,32 +278,57 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                     ⭐ {item.rating > 0 ? item.rating.toFixed(1) : 'New'} ({item.reviewCount})
                   </Text>
                   <Text style={styles.metricDot}>•</Text>
-                  <Text style={styles.metricText}>{item.completedJobsCount} jobs completed</Text>
+                  <Text style={styles.metricText}>{item.completedJobsCount} completed</Text>
                   <Text style={styles.metricDot}>•</Text>
-                  <Text
-                    style={[
-                      styles.metricText,
-                      { color: item.isAvailable ? colors.success : colors.textMuted },
-                    ]}
-                  >
-                    {item.isAvailable ? 'Online' : 'Offline'}
-                  </Text>
+                  {busyWorkerMap.has(item.id) ? (
+                    <Text style={[styles.metricText, { color: colors.warning, fontWeight: '700' }]}>
+                      ⚡ On Job: {busyWorkerMap.get(item.id)?.bookingCode}
+                    </Text>
+                  ) : (
+                    <Text
+                      style={[
+                        styles.metricText,
+                        { color: item.isAvailable ? colors.success : colors.textMuted },
+                      ]}
+                    >
+                      {item.isAvailable ? 'Idle / Available' : 'Offline'}
+                    </Text>
+                  )}
                 </View>
               </View>
             </View>
 
             {/* Admin Action Buttons */}
             <View style={styles.cardActionsRow}>
-              <TouchableOpacity
-                style={styles.assignWorkBtn}
-                onPress={() => {
-                  setAssigningWorker(item);
-                  setAssignJobFilter('matching');
-                }}
-              >
-                <Ionicons name="briefcase-outline" size={14} color="#FFFFFF" />
-                <Text style={styles.assignWorkBtnText}>{t('assign_work')}</Text>
-              </TouchableOpacity>
+              {busyWorkerMap.has(item.id) ? (
+                <TouchableOpacity
+                  style={styles.busyJobDisabledBtn}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    const active = busyWorkerMap.get(item.id);
+                    Alert.alert(
+                      'Worker Busy On Active Job',
+                      `${item.name} is currently assigned to Booking ${active?.bookingCode} (${active?.serviceTitle}). Cooperative regulations strictly limit workers to one active job at a time. The worker will be available again once this work is marked completed.`
+                    );
+                  }}
+                >
+                  <Ionicons name="lock-closed" size={13} color="#D97706" />
+                  <Text style={styles.busyJobDisabledBtnText}>
+                    On Active Job ({busyWorkerMap.get(item.id)?.bookingCode})
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.assignWorkBtn}
+                  onPress={() => {
+                    setAssigningWorker(item);
+                    setAssignJobFilter('matching');
+                  }}
+                >
+                  <Ionicons name="briefcase-outline" size={14} color="#FFFFFF" />
+                  <Text style={styles.assignWorkBtnText}>{t('assign_work')}</Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={styles.removeWorkerBtn}
@@ -661,6 +707,22 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 12,
+  },
+  busyJobDisabledBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: borderRadius.sm,
+  },
+  busyJobDisabledBtnText: {
+    color: '#B45309',
+    fontWeight: '700',
+    fontSize: 11,
   },
   removeWorkerBtn: {
     flexDirection: 'row',
