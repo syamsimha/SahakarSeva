@@ -85,7 +85,9 @@ class WorkerService {
     customerCoords?: { latitude: number; longitude: number };
   }): Promise<WorkerProfile[]> {
     const allWorkers = await databaseService.getWorkers();
-    let results = allWorkers && allWorkers.length > 0 ? [...allWorkers] : [...this.workers];
+    let results = allWorkers && allWorkers.length > 0
+      ? [...allWorkers]
+      : (databaseService.isSupabaseConfigured() ? [] : [...this.workers]);
     results = results.filter((w) => !(w as any).isDeleted);
 
     // Compute live distance if customer coordinates provided
@@ -183,6 +185,7 @@ class WorkerService {
   async getWorkerById(id: string): Promise<WorkerProfile | undefined> {
     const dbWorker = await databaseService.getWorkerById(id);
     if (dbWorker && !(dbWorker as any).isDeleted) return dbWorker;
+    if (databaseService.isSupabaseConfigured()) return undefined;
     return this.workers.find((w) => w.id === id && !(w as any).isDeleted);
   }
 

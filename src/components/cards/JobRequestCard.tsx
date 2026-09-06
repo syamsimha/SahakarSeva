@@ -10,6 +10,8 @@ interface JobRequestCardProps {
   onAccept: () => void;
   onReject: () => void;
   onViewDetails?: () => void;
+  isAcceptDisabled?: boolean;
+  disabledReason?: string;
 }
 
 export const JobRequestCard: React.FC<JobRequestCardProps> = ({
@@ -17,6 +19,8 @@ export const JobRequestCard: React.FC<JobRequestCardProps> = ({
   onAccept,
   onReject,
   onViewDetails,
+  isAcceptDisabled = false,
+  disabledReason,
 }) => {
   return (
     <View style={[styles.container, booking.isPriority && styles.priorityContainer]}>
@@ -72,6 +76,14 @@ export const JobRequestCard: React.FC<JobRequestCardProps> = ({
         )}
       </View>
 
+      {/* Disabled Reason Notice if acceptance is blocked */}
+      {isAcceptDisabled && Boolean(disabledReason) && (
+        <View style={styles.disabledBanner}>
+          <Ionicons name="alert-circle-outline" size={14} color={colors.warning} />
+          <Text style={styles.disabledBannerText}>{disabledReason}</Text>
+        </View>
+      )}
+
       {/* Payment & Actions */}
       <View style={styles.footerRow}>
         <View style={styles.paymentCol}>
@@ -89,12 +101,13 @@ export const JobRequestCard: React.FC<JobRequestCardProps> = ({
             textStyle={{ color: colors.danger }}
           />
           <Button
-            title="Accept Job"
-            icon="checkmark-circle"
+            title={isAcceptDisabled ? 'Accept (Blocked)' : 'Accept Job'}
+            icon={isAcceptDisabled ? 'lock-closed-outline' : 'checkmark-circle'}
             onPress={onAccept}
+            disabled={isAcceptDisabled}
             variant="primary"
             size="sm"
-            style={styles.acceptBtn}
+            style={isAcceptDisabled ? { ...styles.acceptBtn, ...styles.acceptBtnDisabled } : styles.acceptBtn}
           />
         </View>
       </View>
@@ -242,5 +255,27 @@ const styles = StyleSheet.create({
   },
   acceptBtn: {
     backgroundColor: colors.primary,
+  },
+  acceptBtnDisabled: {
+    backgroundColor: '#94A3B8',
+    opacity: 0.7,
+  },
+  disabledBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+    borderWidth: 1,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    marginTop: spacing.sm,
+  },
+  disabledBannerText: {
+    fontSize: 11,
+    color: '#92400E',
+    fontWeight: '600',
+    marginLeft: 6,
+    flex: 1,
   },
 });

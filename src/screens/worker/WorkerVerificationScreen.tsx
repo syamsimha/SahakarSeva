@@ -15,7 +15,7 @@ export const WorkerVerificationScreen: React.FC<WorkerVerificationScreenProps> =
   const { user } = useAuth();
   const worker = user as WorkerProfile;
 
-  const status = worker?.verificationStatus || 'verified';
+  const status = worker?.verificationStatus || 'pending';
 
   const rawDocs = worker?.documents || [
     { id: '1', name: 'ID Proof (Aadhaar Card)', type: 'aadhaar', status: 'verified', uploadedAt: '2023-08-10' },

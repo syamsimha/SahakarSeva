@@ -219,29 +219,6 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
   const currentStepIdx = getStepIndex(booking.status);
 
   /*
-   * Demo status progression.
-   */
-  const handleSimulateNextStatus = async () => {
-    if (booking.status === 'cancelled') {
-      return;
-    }
-
-    if (
-      currentStepIdx >= 0 &&
-      currentStepIdx < statusSteps.length - 1
-    ) {
-      const nextStatus =
-        statusSteps[currentStepIdx + 1].key;
-
-      await updateStatus(
-        booking.id,
-        nextStatus,
-        `Simulated status update: ${nextStatus}`
-      );
-    }
-  };
-
-  /*
    * Actually cancel the booking.
    */
   const performCancelBooking = async () => {
@@ -457,12 +434,6 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
           <View style={styles.timelineCard}>
             <View style={styles.timelineHeader}>
               <Text style={styles.cardTitle}>{t('live_status_progression') || 'Live Status Progression'}</Text>
-              {currentStepIdx < statusSteps.length - 1 && (
-                <TouchableOpacity onPress={handleSimulateNextStatus} style={styles.simBtn}>
-                  <Ionicons name="play-forward" size={12} color={colors.primary} />
-                  <Text style={styles.simBtnText}>{t('advance_status_demo') || 'Advance Status (Demo)'}</Text>
-                </TouchableOpacity>
-              )}
             </View>
 
             <View style={styles.stepsRow}>
@@ -504,6 +475,48 @@ export const BookingDetailsScreen: React.FC<BookingDetailsScreenProps> = ({
                 );
               })}
             </View>
+          </View>
+        )}
+
+        {/* Real 4-Digit Job Completion Verification Code */}
+        {booking.status === 'in_progress' && (
+          <View style={styles.otpCard}>
+            <View style={styles.otpHeaderRow}>
+              <View style={styles.otpIconBadge}>
+                <Ionicons name="key" size={18} color="#059669" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.otpCardTitle}>
+                  Job Completion Verification Code
+                </Text>
+                <Text style={styles.otpCardSub}>
+                  Share this 4-digit code with the worker after the work is completed.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.otpDisplayContainer}>
+              <Text style={styles.otpDigits}>
+                {booking.completionOtp || '----'}
+              </Text>
+            </View>
+
+            <View style={styles.otpFooterRow}>
+              <Ionicons name="shield-checkmark" size={14} color="#059669" />
+              <Text style={styles.otpFooterText}>
+                For your safety, only share this code once the job has been completed to your satisfaction.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Verified Status Banner for Completed Booking */}
+        {booking.status === 'completed' && booking.completionOtpVerified && (
+          <View style={styles.otpCompletedBox}>
+            <Ionicons name="checkmark-circle" size={18} color="#059669" />
+            <Text style={styles.otpCompletedText}>
+              {`Service verified & completed with 4-digit customer code (${booking.completionOtp || '••••'})`}
+            </Text>
           </View>
         )}
 
@@ -864,20 +877,82 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
 
-  simBtn: {
+  otpCard: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+  },
+  otpHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primaryLight,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: borderRadius.xs,
+    marginBottom: spacing.sm,
   },
-
-  simBtnText: {
+  otpIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  otpCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  otpCardSub: {
+    fontSize: 12,
+    color: '#047857',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  otpDisplayContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  otpDigits: {
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: 10,
+    color: '#047857',
+  },
+  otpFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
+  otpFooterText: {
     fontSize: 11,
-    color: colors.primary,
-    marginLeft: 4,
+    color: '#065F46',
+    marginLeft: 6,
+    flex: 1,
+  },
+  otpCompletedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  otpCompletedText: {
+    fontSize: 12,
     fontWeight: '600',
+    color: '#065F46',
+    marginLeft: 8,
+    flex: 1,
   },
 
   stepsRow: {

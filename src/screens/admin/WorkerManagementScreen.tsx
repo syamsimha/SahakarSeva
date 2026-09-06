@@ -8,14 +8,16 @@ import {
   Modal,
   ScrollView,
   Linking,
+  Image,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header, SearchBar } from '../../components/common';
 import { Avatar, Badge, Button, EmptyState } from '../../components/ui';
-import { mockWorkers } from '../../data';
 import { WorkerProfile, WorkerVerificationStatus, WorkerDocument } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
-import { workerService } from '../../services';
+import { workerService, documentService } from '../../services';
 import { useBookings } from '../../context/BookingContext';
 import { getWorkerActiveJob } from '../../utils/workerMatching';
 
@@ -33,6 +35,9 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
   const [selectedWorker, setSelectedWorker] = useState<WorkerProfile | null>(null);
   const [selectedDocAudit, setSelectedDocAudit] = useState<{ doc: WorkerDocument; worker: WorkerProfile } | null>(null);
   const [docAuditValidated, setDocAuditValidated] = useState(false);
+  const [docAuditSignedUrl, setDocAuditSignedUrl] = useState<string | null>(null);
+  const [loadingDocAuditUrl, setLoadingDocAuditUrl] = useState(false);
+  const [docAuditUrlError, setDocAuditUrlError] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
 
   const loadWorkers = async () => {
@@ -54,6 +59,44 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
   const showFeedback = (msg: string) => {
     setFeedbackMsg(msg);
     setTimeout(() => setFeedbackMsg(null), 3500);
+  };
+
+  const handleOpenDocAudit = async (doc: WorkerDocument, worker: WorkerProfile) => {
+    setSelectedDocAudit({ doc, worker });
+    setDocAuditValidated(doc.status === 'verified');
+    setLoadingDocAuditUrl(true);
+    setDocAuditUrlError(null);
+    setDocAuditSignedUrl(null);
+
+    try {
+      const signedUrl = await documentService.getDocumentSignedUrl(doc.fileUrl);
+      if (signedUrl) {
+        setDocAuditSignedUrl(signedUrl);
+      } else {
+        setDocAuditUrlError('Could not retrieve secure viewing link for this document.');
+      }
+    } catch (err: any) {
+      setDocAuditUrlError(err?.message || 'Failed to load document');
+    } finally {
+      setLoadingDocAuditUrl(false);
+    }
+  };
+
+  const handleOpenExternal = (url: string | null) => {
+    if (!url) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(url, '_blank');
+    } else {
+      Linking.openURL(url).catch(() => {
+        showFeedback('Unable to open document on this device');
+      });
+    }
+  };
+
+  const isPdf = (doc: WorkerDocument) => {
+    const name = (doc.name || '').toLowerCase();
+    const url = (doc.fileUrl || '').toLowerCase();
+    return name.endsWith('.pdf') || url.includes('.pdf');
   };
 
   const handleCall = (phone: string) => {
@@ -153,22 +196,17 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                   })()}
                 </View>
               </View>
-
               <Text style={styles.workerSkill}>{item.primarySkill} • {item.experienceYears} yrs exp</Text>
               <Text style={styles.coopName}>{item.cooperativeName}</Text>
 
-              {/* Authenticated 2 Documents Badges (Tap to View) */}
+              {/* Authenticated Documents Badges (Tap to View) */}
               <View style={styles.docsChipRow}>
-                {item.documents
-                  .filter((d) => d.type === 'aadhaar' || d.type === 'skill_certificate')
-                  .map((doc, dIdx) => (
+                {item.documents && item.documents.length > 0 ? (
+                  item.documents.map((doc, dIdx) => (
                     <TouchableOpacity
-                      key={dIdx}
+                      key={doc.id || dIdx}
                       style={styles.docChip}
-                      onPress={() => {
-                        setSelectedDocAudit({ doc, worker: item });
-                        setDocAuditValidated(doc.status === 'verified');
-                      }}
+                      onPress={() => handleOpenDocAudit(doc, item)}
                       activeOpacity={0.7}
                     >
                       <Ionicons
@@ -177,11 +215,14 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                         color={colors.primary}
                       />
                       <Text style={styles.docChipText}>
-                        {doc.type === 'aadhaar' ? 'ID Proof' : 'Skill Cert'}
+                        {doc.type === 'aadhaar' ? 'ID Proof' : doc.type === 'skill_certificate' ? 'Skill Cert' : doc.name}
                       </Text>
                       <Ionicons name="eye-outline" size={11} color={colors.primary} />
                     </TouchableOpacity>
-                  ))}
+                  ))
+                ) : (
+                  <Text style={styles.noDocsChipText}>No verification documents uploaded</Text>
+                )}
               </View>
 
               <View style={styles.metricRow}>
@@ -310,44 +351,53 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                     <Text style={styles.detailLine}>• Completed Guild Jobs: {selectedWorker.completedJobsCount} operations</Text>
                   </View>
 
-                  {/* Authenticated Verification Documents (ID Proof & Skill Certificate only) */}
+                  {/* Authenticated Verification Documents */}
                   {(() => {
-                    const docList = (selectedWorker.documents || []).filter(
-                      (doc) => doc.type === 'aadhaar' || doc.type === 'skill_certificate'
-                    );
+                    const docList = selectedWorker.documents || [];
                     return (
                       <View style={styles.dossierSection}>
-                        <Text style={styles.sectionLabel}>Authenticated Verification Proofs ({docList.length}) - Tap to Inspect</Text>
-                        {docList.map((doc, dIdx) => (
-                          <TouchableOpacity
-                            key={dIdx}
-                            style={styles.docItemRow}
-                            onPress={() => {
-                              setSelectedDocAudit({ doc, worker: selectedWorker });
-                              setDocAuditValidated(doc.status === 'verified');
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <Ionicons
-                              name={doc.type === 'aadhaar' ? 'card' : 'ribbon'}
-                              size={16}
-                              color={colors.primary}
-                            />
-                            <View style={{ flex: 1, marginLeft: 8 }}>
-                              <Text style={styles.docItemTitle}>{doc.name}</Text>
-                              <Text style={styles.docItemSub}>
-                                {doc.type === 'aadhaar' ? 'GOVERNMENT ID PROOF' : 'TRADE SKILL CERTIFICATE'} • {doc.status.toUpperCase()}
-                              </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Badge
-                                label={doc.status === 'verified' ? 'Verified' : 'Attached'}
-                                status={doc.status === 'verified' ? 'verified' : 'pending'}
+                        <Text style={styles.sectionLabel}>
+                          Authenticated Verification Proofs ({docList.length}) - Tap to Inspect
+                        </Text>
+                        {docList.length > 0 ? (
+                          docList.map((doc, dIdx) => (
+                            <TouchableOpacity
+                              key={doc.id || dIdx}
+                              style={styles.docItemRow}
+                              onPress={() => handleOpenDocAudit(doc, selectedWorker)}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons
+                                name={doc.type === 'aadhaar' ? 'card' : 'ribbon'}
+                                size={16}
+                                color={colors.primary}
                               />
-                              <Ionicons name="eye-outline" size={16} color={colors.primary} />
-                            </View>
-                          </TouchableOpacity>
-                        ))}
+                              <View style={{ flex: 1, marginLeft: 8 }}>
+                                <Text style={styles.docItemTitle}>{doc.name}</Text>
+                                <Text style={styles.docItemSub}>
+                                  {doc.type === 'aadhaar'
+                                    ? 'GOVERNMENT ID PROOF'
+                                    : doc.type === 'skill_certificate'
+                                    ? 'TRADE SKILL CERTIFICATE'
+                                    : doc.type.toUpperCase()}{' '}
+                                  • {doc.status.toUpperCase()}
+                                </Text>
+                              </View>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Badge
+                                  label={doc.status === 'verified' ? 'Verified' : 'Attached'}
+                                  status={doc.status === 'verified' ? 'verified' : 'pending'}
+                                />
+                                <Ionicons name="eye-outline" size={16} color={colors.primary} />
+                              </View>
+                            </TouchableOpacity>
+                          ))
+                        ) : (
+                          <View style={styles.noDocsDossierContainer}>
+                            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+                            <Text style={styles.noDocsDossierText}>No verification documents uploaded</Text>
+                          </View>
+                        )}
                       </View>
                     );
                   })()}
@@ -426,14 +476,14 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                   <View style={styles.docInspectCard}>
                     <View style={styles.docHeaderRow}>
                       <Ionicons
-                        name={selectedDocAudit.doc.type === 'aadhaar' ? 'card' : 'ribbon'}
+                        name={selectedDocAudit.doc.type === 'aadhaar' ? 'card-outline' : 'ribbon-outline'}
                         size={24}
                         color={colors.primary}
                       />
                       <View style={{ flex: 1, marginLeft: 8 }}>
                         <Text style={styles.docInspectionTitle}>{selectedDocAudit.doc.name}</Text>
                         <Text style={styles.docType}>
-                          CATEGORY: {selectedDocAudit.doc.type === 'aadhaar' ? 'GOVERNMENT ID PROOF (AADHAAR)' : 'TRADE SKILL QUALIFICATION'}
+                          CATEGORY: {selectedDocAudit.doc.type === 'aadhaar' ? 'GOVERNMENT ID PROOF (AADHAAR)' : selectedDocAudit.doc.type === 'skill_certificate' ? 'TRADE SKILL QUALIFICATION' : selectedDocAudit.doc.type.toUpperCase()}
                         </Text>
                       </View>
                       <Badge
@@ -442,35 +492,62 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                       />
                     </View>
 
-                    {/* Certificate Mock Visual Preview Box */}
-                    <View style={styles.certificatePreviewBox}>
-                      <View style={styles.certEmblemRow}>
-                        <Ionicons
-                          name={selectedDocAudit.doc.type === 'aadhaar' ? 'finger-print' : 'school'}
-                          size={28}
-                          color={colors.primary}
-                        />
-                        <Text style={styles.certGovtHeading}>
-                          {selectedDocAudit.doc.type === 'aadhaar'
-                            ? 'Unique Identification Authority of India / Govt ID'
-                            : 'National Council for Vocational Training (NCVT) / ITI'}
-                        </Text>
-                      </View>
-                      <Text style={styles.certSerial}>
-                        SERIAL NO: DOC-AP-2024-{selectedDocAudit.doc.id.toUpperCase()}-SEC
-                      </Text>
-                      <View style={styles.certDetailsGrid}>
-                        <Text style={styles.certDetailLine}>• Holder: <Text style={{ fontWeight: '700' }}>{selectedDocAudit.worker.name}</Text></Text>
-                        <Text style={styles.certDetailLine}>• Affiliated Guild: <Text style={{ fontWeight: '600' }}>{selectedDocAudit.worker.cooperativeName}</Text></Text>
-                        <Text style={styles.certDetailLine}>• Trade Discipline: <Text style={{ fontWeight: '600' }}>{selectedDocAudit.worker.primarySkill}</Text></Text>
-                        <Text style={styles.certDetailLine}>• Verification Status: <Text style={{ fontWeight: '700', color: colors.success }}>Official Authenticated Record ✅</Text></Text>
-                        <Text style={styles.certDetailLine}>• Digital Tamper Hash: SHA256:7f8a92bc18e3d540</Text>
-                        <Text style={styles.certDetailLine}>• Date Uploaded: {new Date(selectedDocAudit.doc.uploadedAt).toLocaleDateString('en-IN')}</Text>
-                      </View>
-                      <View style={styles.certStamp}>
-                        <Ionicons name="checkmark-done-circle" size={18} color={colors.success} />
-                        <Text style={styles.certStampText}>Visakhapatnam Cooperative Hologram Authenticated</Text>
-                      </View>
+                    {/* Real Document Viewer */}
+                    <View style={styles.viewerContainer}>
+                      {loadingDocAuditUrl ? (
+                        <View style={styles.viewerLoadingBox}>
+                          <ActivityIndicator size="large" color={colors.primary} />
+                          <Text style={styles.viewerLoadingText}>Loading secure document view...</Text>
+                        </View>
+                      ) : docAuditUrlError ? (
+                        <View style={styles.viewerErrorBox}>
+                          <Ionicons name="alert-circle-outline" size={32} color={colors.danger} />
+                          <Text style={styles.viewerErrorText}>{docAuditUrlError}</Text>
+                        </View>
+                      ) : docAuditSignedUrl ? (
+                        isPdf(selectedDocAudit.doc) ? (
+                          <View style={styles.pdfCard}>
+                            <Ionicons name="document-text" size={48} color={colors.primary} />
+                            <Text style={styles.pdfCardName}>{selectedDocAudit.doc.name}</Text>
+                            <Text style={styles.pdfCardType}>PDF Document</Text>
+                            <TouchableOpacity
+                              style={styles.openPdfBtn}
+                              onPress={() => handleOpenExternal(docAuditSignedUrl)}
+                            >
+                              <Ionicons name="open-outline" size={16} color="#FFF" />
+                              <Text style={styles.openPdfBtnText}>Open / View PDF</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <View style={styles.imageCard}>
+                            <Image
+                              source={{ uri: docAuditSignedUrl }}
+                              style={styles.realDocImage}
+                              resizeMode="contain"
+                            />
+                            <TouchableOpacity
+                              style={styles.openExternalBtn}
+                              onPress={() => handleOpenExternal(docAuditSignedUrl)}
+                            >
+                              <Ionicons name="open-outline" size={14} color={colors.primary} />
+                              <Text style={styles.openExternalText}>Open Full Image</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )
+                      ) : (
+                        <View style={styles.viewerErrorBox}>
+                          <Text style={styles.viewerErrorText}>No document preview available.</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Real Document Metadata */}
+                    <View style={styles.docMetaGrid}>
+                      <Text style={styles.docMetaLine}>• Holder: {selectedDocAudit.worker.name}</Text>
+                      <Text style={styles.docMetaLine}>• Affiliated Guild: {selectedDocAudit.worker.cooperativeName}</Text>
+                      <Text style={styles.docMetaLine}>• Trade Discipline: {selectedDocAudit.worker.primarySkill}</Text>
+                      <Text style={styles.docMetaLine}>• Verification Status: {docAuditValidated ? 'Verified ✅' : 'Pending Verification'}</Text>
+                      <Text style={styles.docMetaLine}>• Date Uploaded: {new Date(selectedDocAudit.doc.uploadedAt).toLocaleDateString('en-IN')}</Text>
                     </View>
                   </View>
 
@@ -480,8 +557,32 @@ export const WorkerManagementScreen: React.FC<WorkerManagementScreenProps> = ({ 
                       title={docAuditValidated ? 'Document Validated & Legible ✅' : 'Validate & Mark Legible'}
                       icon="checkmark-circle-outline"
                       variant="primary"
-                      onPress={() => {
+                      onPress={async () => {
+                        await documentService.updateDocumentStatus(selectedDocAudit.doc.id, 'verified');
                         setDocAuditValidated(true);
+                        setWorkers((prev) =>
+                          prev.map((w) => {
+                            if (w.id !== selectedDocAudit.worker.id) return w;
+                            return {
+                              ...w,
+                              documents: w.documents.map((d) =>
+                                d.id === selectedDocAudit.doc.id ? { ...d, status: 'verified' as const } : d
+                              ),
+                            };
+                          })
+                        );
+                        if (selectedWorker && selectedWorker.id === selectedDocAudit.worker.id) {
+                          setSelectedWorker((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  documents: prev.documents.map((d) =>
+                                    d.id === selectedDocAudit.doc.id ? { ...d, status: 'verified' as const } : d
+                                  ),
+                                }
+                              : null
+                          );
+                        }
                         showFeedback(`Marked ${selectedDocAudit.doc.name} as verified!`);
                         setTimeout(() => setSelectedDocAudit(null), 1000);
                       }}
@@ -811,65 +912,120 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginTop: 2,
   },
-  certificatePreviewBox: {
-    backgroundColor: '#FAF5EE',
-    borderWidth: 2,
-    borderColor: '#D4AF37',
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    position: 'relative',
-    overflow: 'hidden',
+  noDocsChipText: {
+    fontSize: 10,
+    fontStyle: 'italic',
+    color: colors.textMuted,
   },
-  certEmblemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: spacing.xs,
-  },
-  certGovtHeading: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#78350F',
-    letterSpacing: 0.5,
-    flex: 1,
-  },
-  certSerial: {
-    fontSize: 9,
-    fontFamily: 'monospace',
-    color: '#92400E',
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    marginBottom: spacing.sm,
-    fontWeight: '700',
-  },
-  certDetailsGrid: {
-    gap: 4,
-    marginBottom: spacing.sm,
-  },
-  certDetailLine: {
-    fontSize: 11,
-    color: '#374151',
-  },
-  certStamp: {
+  noDocsDossierContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#DCFCE7',
-    borderColor: '#86EFAC',
-    borderWidth: 1,
+    backgroundColor: '#FEF3C7',
+    padding: spacing.sm,
     borderRadius: borderRadius.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    alignSelf: 'flex-start',
-    marginTop: 4,
+    marginVertical: spacing.xs,
   },
-  certStampText: {
-    fontSize: 10,
+  noDocsDossierText: {
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '600',
+  },
+  viewerContainer: {
+    marginVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 180,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  viewerLoadingBox: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: 8,
+  },
+  viewerLoadingText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  viewerErrorBox: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: 8,
+  },
+  viewerErrorText: {
+    fontSize: 12,
+    color: colors.danger,
+    textAlign: 'center',
+  },
+  pdfCard: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    width: '100%',
+  },
+  pdfCardName: {
+    fontSize: 14,
     fontWeight: '700',
-    color: '#15803D',
+    color: colors.text,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  pdfCardType: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  openPdfBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md,
+  },
+  openPdfBtnText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  imageCard: {
+    width: '100%',
+    alignItems: 'center',
+    padding: spacing.sm,
+  },
+  realDocImage: {
+    width: '100%',
+    height: 300,
+    borderRadius: borderRadius.sm,
+    backgroundColor: '#F8FAFC',
+  },
+  openExternalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.sm,
+    paddingVertical: 4,
+  },
+  openExternalText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  docMetaGrid: {
+    gap: 3,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  docMetaLine: {
+    fontSize: 11,
+    color: colors.textSecondary,
   },
 });
 

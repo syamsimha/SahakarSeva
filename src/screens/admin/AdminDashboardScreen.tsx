@@ -16,7 +16,7 @@ import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
 import { StatCard, BookingCard } from '../../components/cards';
 import { Button, Badge, Avatar } from '../../components/ui';
-import { mockAdminStats, mockWorkers } from '../../data';
+import { mockAdminStats } from '../../data';
 import { useBookings } from '../../context/BookingContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';

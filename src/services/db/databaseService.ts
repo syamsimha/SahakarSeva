@@ -1,5 +1,6 @@
-import { AppUser, WorkerProfile, Booking, Review, Customer, SupportRequest } from '../../types';
+import { AppUser, WorkerProfile, WorkerDocument, WorkerVerificationStatus, Booking, Review, Customer, SupportRequest } from '../../types';
 import { mockWorkers, mockBookings, mockCustomer, mockWorkerUser, mockAdminUser, mockReviews } from '../../data';
+import { supabase } from '../../lib/supabase';
 
 const STORAGE_KEYS = {
   SESSION: 'sahakar_auth_session',
@@ -230,27 +231,93 @@ class DatabaseService {
   // ==================== WORKERS ====================
 
   async getWorkers(): Promise<WorkerProfile[]> {
-    const raw = storage.getItem(STORAGE_KEYS.WORKERS);
-    let workers: WorkerProfile[] = [];
-    if (!raw) {
-      workers = [...mockWorkers];
-    } else {
+    if (this.isSupabaseConfigured()) {
       try {
-        workers = JSON.parse(raw);
-      } catch {
-        workers = [...mockWorkers];
+        const { data, error } = await supabase
+          .from('worker_profiles')
+          .select(`
+            *,
+            profiles (*),
+            worker_documents (*)
+          `);
+
+        if (!error && Array.isArray(data)) {
+          const mapped: WorkerProfile[] = data.map((row: any) => {
+            const profile = row.profiles || {};
+            const docs: WorkerDocument[] = Array.isArray(row.worker_documents)
+              ? row.worker_documents.map((d: any) => ({
+                  id: d.id,
+                  name: d.document_name,
+                  type: d.document_type,
+                  status: d.status || 'uploaded',
+                  uploadedAt: d.uploaded_at,
+                  fileUrl: d.file_url,
+                }))
+              : [];
+
+            const coords = WORKER_COORDINATES[row.id] || { lat: 12.9784, lng: 77.6408 };
+
+            return {
+              id: row.id,
+              name: profile.full_name || 'Worker Member',
+              email: profile.email || '',
+              phone: profile.phone || '',
+              role: 'worker',
+              avatarUrl: profile.avatar_url,
+              address: profile.address || '',
+              city: profile.city || 'Bengaluru',
+              pincode: profile.pincode || '',
+              createdAt: profile.created_at || row.created_at || new Date().toISOString(),
+              primarySkill: row.primary_skill || 'General Maintenance',
+              allSkills: Array.isArray(row.all_skills) && row.all_skills.length > 0
+                ? row.all_skills
+                : [row.primary_skill || 'General Maintenance'],
+              cooperativeName: row.cooperative_name || 'Nagarika Seva Sahakari Samiti',
+              cooperativeId: row.cooperative_id || 'COOP-BLR-001',
+              experienceYears: Number(row.experience_years) || 1,
+              certifications: Array.isArray(row.certifications) ? row.certifications : [],
+              rating: Number(row.review_count) > 0 ? (Number(row.rating) || 0) : 0,
+              reviewCount: Number(row.review_count) || 0,
+              completedJobsCount: Number(row.completed_jobs_count) || 0,
+              hourlyRate: Number(row.hourly_rate) || 0,
+              baseRate: Number(row.base_rate) || 0,
+              isAvailable: Boolean(row.is_available ?? true),
+              serviceArea: row.service_area || 'Bengaluru Urban',
+              serviceRadiusKm: Number(row.service_radius_km) || 10,
+              languages: Array.isArray(row.languages) ? row.languages : ['Kannada', 'Hindi', 'English'],
+              about: row.about || '',
+              verificationStatus: (row.verification_status || 'pending') as WorkerVerificationStatus,
+              welfareMemberId: row.welfare_member_id || '',
+              bankAccountLinked: Boolean(row.bank_account_linked ?? true),
+              documents: docs,
+              latitude: coords.lat,
+              longitude: coords.lng,
+            };
+          });
+
+          // Sync to local cache
+          storage.setItem(STORAGE_KEYS.WORKERS, JSON.stringify(mapped));
+          return mapped;
+        }
+
+        if (error) {
+          console.warn('[DatabaseService.getWorkers] Supabase query notice:', error.message);
+        }
+      } catch (err) {
+        console.warn('[DatabaseService.getWorkers] Exception querying Supabase:', err);
       }
     }
 
-    return workers.map((w) => {
-      if (w.latitude === undefined || w.longitude === undefined) {
-        const coords = WORKER_COORDINATES[w.id];
-        if (coords) {
-          return { ...w, latitude: coords.lat, longitude: coords.lng };
-        }
+    // Storage / offline fallback (never inject fake documents if storage is empty)
+    const raw = storage.getItem(STORAGE_KEYS.WORKERS);
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return [];
       }
-      return w;
-    });
+    }
+    return [];
   }
 
   async getWorkerById(id: string): Promise<WorkerProfile | undefined> {
@@ -259,7 +326,34 @@ class DatabaseService {
   }
 
   async updateWorker(updated: WorkerProfile): Promise<WorkerProfile> {
-    const workers = await this.getWorkers();
+    if (this.isSupabaseConfigured()) {
+      try {
+        const { error } = await supabase
+          .from('worker_profiles')
+          .update({
+            verification_status: updated.verificationStatus,
+            is_available: updated.isAvailable,
+            rating: updated.rating,
+            review_count: updated.reviewCount,
+            completed_jobs_count: updated.completedJobsCount,
+          })
+          .eq('id', updated.id);
+
+        if (error) {
+          console.warn('[DatabaseService.updateWorker] Supabase update notice:', error.message);
+        }
+      } catch (err) {
+        console.warn('[DatabaseService.updateWorker] Exception:', err);
+      }
+    }
+
+    const raw = storage.getItem(STORAGE_KEYS.WORKERS);
+    let workers: WorkerProfile[] = [];
+    try {
+      workers = raw ? JSON.parse(raw) : [];
+    } catch {
+      workers = [];
+    }
     const index = workers.findIndex((w) => w.id === updated.id);
     if (index >= 0) {
       workers[index] = updated;
@@ -267,6 +361,7 @@ class DatabaseService {
       workers.push(updated);
     }
     storage.setItem(STORAGE_KEYS.WORKERS, JSON.stringify(workers));
+    this.broadcastUpdate('WORKER_UPDATED', updated);
     return updated;
   }
 
@@ -383,7 +478,7 @@ class DatabaseService {
     if (this.isSupabaseConfigured()) {
       try {
         const payload = mapBookingToSupabaseRow(booking);
-        await fetch(`${this.supabaseUrl}/rest/v1/bookings`, {
+        const res = await fetch(`${this.supabaseUrl}/rest/v1/bookings`, {
           method: 'POST',
           headers: {
             apikey: this.supabaseAnonKey,
@@ -393,12 +488,174 @@ class DatabaseService {
           },
           body: JSON.stringify(payload),
         });
+
+        // Graceful handling if remote database hasn't applied completion_otp migration yet
+        if (!res.ok) {
+          const errBody = await res.text();
+          if (errBody.includes('completion_otp')) {
+            const fallbackPayload = { ...payload };
+            delete fallbackPayload.completion_otp;
+            delete fallbackPayload.completion_otp_verified;
+            await fetch(`${this.supabaseUrl}/rest/v1/bookings`, {
+              method: 'POST',
+              headers: {
+                apikey: this.supabaseAnonKey,
+                Authorization: `Bearer ${this.supabaseAnonKey}`,
+                'Content-Type': 'application/json',
+                Prefer: 'resolution=merge-duplicates',
+              },
+              body: JSON.stringify(fallbackPayload),
+            });
+          }
+        }
       } catch (err) {
         console.warn('Supabase saveBooking error:', err);
       }
     }
 
     return booking;
+  }
+
+  /**
+   * Atomically accepts a requested booking for a verified worker.
+   * Guarantees race-condition prevention:
+   * 1. If Supabase is configured: tries RPC accept_booking_as_worker. If unavailable, executes atomic conditional
+   *    PATCH on /rest/v1/bookings?id=eq.{id}&status=eq.requested. If 0 rows match, acceptance fails safely.
+   * 2. In local/storage store: checks existing stored booking status. If not 'requested', rejects immediately.
+   */
+  async acceptBookingAtomic(
+    bookingId: string,
+    worker: WorkerProfile
+  ): Promise<{ success: boolean; booking?: Booking; error?: string }> {
+    const now = new Date().toISOString();
+
+    // 1. If Supabase is configured, enforce atomic database operation
+    if (this.isSupabaseConfigured()) {
+      try {
+        // Try calling stored RPC if available
+        const rpcRes = await fetch(`${this.supabaseUrl}/rest/v1/rpc/accept_booking_as_worker`, {
+          method: 'POST',
+          headers: {
+            apikey: this.supabaseAnonKey,
+            Authorization: `Bearer ${this.supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            p_booking_id: bookingId,
+            p_worker_id: worker.id,
+            p_worker_name: worker.name,
+            p_worker_skill: worker.primarySkill,
+            p_worker_phone: worker.phone,
+            p_cooperative_name: worker.cooperativeName,
+          }),
+        });
+
+        if (rpcRes.ok) {
+          const rpcData = await rpcRes.json();
+          if (rpcData && rpcData.success && rpcData.booking) {
+            const acceptedBooking = mapSupabaseRowToBooking(rpcData.booking);
+            // Sync with local memory/storage
+            await this.saveBooking(acceptedBooking);
+            return { success: true, booking: acceptedBooking };
+          } else if (rpcData && rpcData.error) {
+            return { success: false, error: rpcData.error };
+          }
+        }
+
+        // Fallback: conditional atomic PATCH requiring status = 'requested'
+        const patchRes = await fetch(
+          `${this.supabaseUrl}/rest/v1/bookings?id=eq.${encodeURIComponent(bookingId)}&status=eq.requested`,
+          {
+            method: 'PATCH',
+            headers: {
+              apikey: this.supabaseAnonKey,
+              Authorization: `Bearer ${this.supabaseAnonKey}`,
+              'Content-Type': 'application/json',
+              Prefer: 'return=representation',
+            },
+            body: JSON.stringify({
+              status: 'accepted',
+              worker_id: worker.id,
+              worker_name: worker.name,
+              worker_skill: worker.primarySkill,
+              worker_phone: worker.phone,
+              cooperative_name: worker.cooperativeName,
+              updated_at: now,
+            }),
+          }
+        );
+
+        if (patchRes.ok) {
+          const updatedRows = await patchRes.json();
+          if (Array.isArray(updatedRows) && updatedRows.length === 0) {
+            return {
+              success: false,
+              error: 'This job is no longer available. Another worker may have accepted it moments ago.',
+            };
+          }
+          if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+            const acceptedBooking = mapSupabaseRowToBooking(updatedRows[0]);
+            await this.saveBooking(acceptedBooking);
+            return { success: true, booking: acceptedBooking };
+          }
+        }
+      } catch (err: any) {
+        console.warn('Supabase atomic acceptance error:', err?.message || err);
+      }
+    }
+
+    // 2. Storage / local state atomic check
+    const raw = storage.getItem(STORAGE_KEYS.BOOKINGS);
+    let bookings: Booking[] = [];
+    try {
+      bookings = raw ? JSON.parse(raw) : [];
+    } catch {
+      bookings = [];
+    }
+
+    const index = bookings.findIndex((b) => b.id === bookingId);
+    if (index === -1) {
+      return { success: false, error: 'Job request record not found.' };
+    }
+
+    const currentBooking = bookings[index];
+    if (currentBooking.status !== 'requested') {
+      return {
+        success: false,
+        error: 'This job is no longer available. It has already been accepted or cancelled.',
+      };
+    }
+
+    if (currentBooking.workerId && currentBooking.workerId !== 'unassigned' && currentBooking.workerId !== worker.id) {
+      return {
+        success: false,
+        error: 'This job has already been accepted by another service professional.',
+      };
+    }
+
+    const updatedBooking: Booking = {
+      ...currentBooking,
+      workerId: worker.id,
+      workerName: worker.name,
+      workerSkill: worker.primarySkill,
+      workerPhone: worker.phone,
+      cooperativeName: worker.cooperativeName,
+      status: 'accepted',
+      statusHistory: [
+        ...(currentBooking.statusHistory || []),
+        {
+          status: 'accepted',
+          timestamp: now,
+          note: `Job accepted by verified worker ${worker.name} (${worker.primarySkill})`,
+        },
+      ],
+    };
+
+    bookings[index] = updatedBooking;
+    storage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(bookings));
+    this.broadcastUpdate('BOOKING_UPDATED', updatedBooking);
+
+    return { success: true, booking: updatedBooking };
   }
 
   async updateBookingWorkerLocation(
@@ -447,17 +704,79 @@ class DatabaseService {
 
   // ==================== REVIEWS ====================
 
-  async getReviews(): Promise<Review[]> {
+  async getReviews(workerId?: string): Promise<Review[]> {
+    if (this.isSupabaseConfigured()) {
+      try {
+        const queryParam = workerId
+          ? `?select=*&worker_id=eq.${encodeURIComponent(workerId)}&order=created_at.desc`
+          : '?select=*&order=created_at.desc';
+        const response = await fetch(`${this.supabaseUrl}/rest/v1/reviews${queryParam}`, {
+          headers: {
+            apikey: this.supabaseAnonKey,
+            Authorization: `Bearer ${this.supabaseAnonKey}`,
+          },
+        });
+        if (response.ok) {
+          const rows = await response.json();
+          if (Array.isArray(rows)) {
+            return rows.map((r: any) => ({
+              id: r.id,
+              bookingId: r.booking_id,
+              workerId: r.worker_id,
+              customerId: r.customer_id,
+              customerName: r.customer_name || 'Cooperative Member',
+              rating: Number(r.rating) || 5,
+              comment: r.comment || '',
+              createdAt: r.created_at ? r.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+              verifiedJob: Boolean(r.verified_job ?? true),
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase getReviews error:', err);
+      }
+    }
+
     const raw = storage.getItem(STORAGE_KEYS.REVIEWS);
-    if (!raw) return [...mockReviews];
+    if (!raw) {
+      // When Supabase is configured, do not fall back to fake mockReviews for worker stats
+      return this.isSupabaseConfigured() ? [] : (workerId ? mockReviews.filter((r) => r.workerId === workerId) : [...mockReviews]);
+    }
     try {
-      return JSON.parse(raw);
+      const parsed: Review[] = JSON.parse(raw);
+      return workerId ? parsed.filter((r) => r.workerId === workerId) : parsed;
     } catch {
-      return [...mockReviews];
+      return this.isSupabaseConfigured() ? [] : (workerId ? mockReviews.filter((r) => r.workerId === workerId) : [...mockReviews]);
     }
   }
 
   async addReview(review: Review): Promise<Review> {
+    if (this.isSupabaseConfigured()) {
+      try {
+        await fetch(`${this.supabaseUrl}/rest/v1/reviews`, {
+          method: 'POST',
+          headers: {
+            apikey: this.supabaseAnonKey,
+            Authorization: `Bearer ${this.supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({
+            id: review.id,
+            booking_id: review.bookingId,
+            worker_id: review.workerId,
+            customer_id: review.customerId,
+            rating: review.rating,
+            comment: review.comment,
+            verified_job: review.verifiedJob,
+            created_at: new Date().toISOString(),
+          }),
+        });
+      } catch (err) {
+        console.warn('Supabase addReview error:', err);
+      }
+    }
+
     const reviews = await this.getReviews();
     reviews.unshift(review);
     storage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(reviews));
@@ -629,6 +948,8 @@ function mapBookingToSupabaseRow(booking: Booking): any {
     payment_method: booking.paymentMethod || 'upi',
     payment_status: booking.paymentStatus || 'pending',
     has_rated: Boolean(booking.hasRated),
+    completion_otp: booking.completionOtp || null,
+    completion_otp_verified: Boolean(booking.completionOtpVerified),
     status_history: booking.statusHistory || [],
     completed_at: booking.completedAt || null,
     created_at: booking.createdAt,
@@ -684,6 +1005,8 @@ function mapSupabaseRowToBooking(row: any): Booking {
     createdAt: row.created_at,
     statusHistory: Array.isArray(row.status_history) ? row.status_history : [],
     hasRated: Boolean(row.has_rated),
+    completionOtp: row.completion_otp || undefined,
+    completionOtpVerified: Boolean(row.completion_otp_verified),
     paymentMethod: row.payment_method,
     paymentStatus: row.payment_status,
   };

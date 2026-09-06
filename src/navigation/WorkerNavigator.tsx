@@ -52,12 +52,18 @@ export const WorkerNavigator: React.FC = () => {
             onNavigateToWelfare={() => setShowWelfare(true)}
             onNavigateToVerification={() => setShowVerification(true)}
             onNavigateToNotifications={() => setShowNotifications(true)}
+            onNavigateToProfile={() => setActiveTab('profile')}
           />
         );
       case 'jobs':
         return <JobManagementScreen />;
       case 'requests':
-        return <JobRequestsScreen />;
+        return (
+          <JobRequestsScreen
+            onNavigateToVerification={() => setShowVerification(true)}
+            onNavigateToJobManagement={() => setActiveTab('jobs')}
+          />
+        );
       case 'earnings':
         return <WorkerEarningsScreen />;
       case 'profile':

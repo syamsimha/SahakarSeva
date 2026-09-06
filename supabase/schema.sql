@@ -174,10 +174,17 @@ CREATE TABLE IF NOT EXISTS public.bookings (
     is_emergency BOOLEAN DEFAULT false,
     payment_method payment_method DEFAULT 'cash',
     payment_status payment_status DEFAULT 'pending',
+    completion_otp VARCHAR(6),
+    completion_otp_verified BOOLEAN DEFAULT false,
     status_history JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Idempotent migration additions for existing public.bookings:
+ALTER TABLE public.bookings
+ADD COLUMN IF NOT EXISTS completion_otp VARCHAR(6),
+ADD COLUMN IF NOT EXISTS completion_otp_verified BOOLEAN DEFAULT false;
 
 -- Reviews Table
 CREATE TABLE IF NOT EXISTS public.reviews (
@@ -939,6 +946,101 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.sync_current_user_profile() TO authenticated;
+
+-- ==========================================================
+-- ATOMIC WORKER JOB ACCEPTANCE WITH CONCURRENCY & RULE LOCK
+-- ==========================================================
+
+CREATE OR REPLACE FUNCTION public.accept_booking_as_worker(
+    p_booking_id TEXT,
+    p_worker_id TEXT,
+    p_worker_name TEXT DEFAULT '',
+    p_worker_skill TEXT DEFAULT '',
+    p_worker_phone TEXT DEFAULT '',
+    p_cooperative_name TEXT DEFAULT ''
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_booking RECORD;
+    v_worker RECORD;
+    v_active_job_count INTEGER;
+    v_now TIMESTAMPTZ := timezone('utc'::text, now());
+BEGIN
+    -- 1. Check worker verification in workers or worker_profiles table
+    SELECT * INTO v_worker FROM public.workers WHERE id = p_worker_id;
+    IF NOT FOUND THEN
+        SELECT * INTO v_worker FROM public.worker_profiles WHERE id::text = p_worker_id;
+    END IF;
+
+    IF v_worker.verification_status IS DISTINCT FROM 'verified' THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Admin verification required: Your profile must be verified by Admin before accepting jobs.'
+        );
+    END IF;
+
+    -- 2. Check single active job constraint for this worker
+    SELECT COUNT(*) INTO v_active_job_count
+    FROM public.bookings
+    WHERE (worker_id::text = p_worker_id)
+      AND status IN ('accepted', 'on_the_way', 'in_progress')
+      AND id::text <> p_booking_id;
+
+    IF v_active_job_count > 0 THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Active job limit: You already have an active job in progress. Complete it before accepting another.'
+        );
+    END IF;
+
+    -- 3. Atomically check and lock the booking row
+    SELECT * INTO v_booking
+    FROM public.bookings
+    WHERE id::text = p_booking_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Job request record not found.');
+    END IF;
+
+    IF v_booking.status <> 'requested' THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'This job is no longer available. It may have already been accepted by another worker.'
+        );
+    END IF;
+
+    -- 4. Atomically update the booking
+    UPDATE public.bookings
+    SET status = 'accepted',
+        status_history = COALESCE(status_history, '[]'::jsonb) || jsonb_build_object(
+            'status', 'accepted',
+            'timestamp', v_now,
+            'note', 'Job accepted by verified worker ' || COALESCE(p_worker_name, '')
+        ),
+        updated_at = v_now
+    WHERE id::text = p_booking_id AND status = 'requested'
+    RETURNING * INTO v_booking;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'This job is no longer available. Another worker accepted it moments ago.'
+        );
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'booking', to_jsonb(v_booking)
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.accept_booking_as_worker(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO authenticated, anon;
+
 
 
 -- ==========================================================
