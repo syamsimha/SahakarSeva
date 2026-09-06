@@ -89,8 +89,16 @@ export const WorkerProfileScreen: React.FC<WorkerProfileScreenProps> = ({
         {/* Stats Strip */}
         <View style={styles.statsStrip}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>⭐ {worker.rating.toFixed(1)}</Text>
-            <Text style={styles.statLabel}>{worker.reviewCount} Reviews</Text>
+            <Text style={styles.statValue}>
+              {reviews.length > 0
+                ? `⭐ ${(reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)}`
+                : (worker.reviewCount > 0 && worker.rating ? `⭐ ${worker.rating.toFixed(1)}` : 'New')}
+            </Text>
+            <Text style={styles.statLabel}>
+              {reviews.length > 0
+                ? `${reviews.length} ${reviews.length === 1 ? 'Review' : 'Reviews'}`
+                : (worker.reviewCount > 0 ? `${worker.reviewCount} Reviews` : 'No ratings yet')}
+            </Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>

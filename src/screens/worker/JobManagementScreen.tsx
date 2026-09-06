@@ -39,6 +39,7 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [enteredOtp, setEnteredOtp] = useState('');
+  const [isCompleting, setIsCompleting] = useState(false);
 
   // Stream genuine worker GPS coordinates to active jobs (on_the_way / in_progress)
   useEffect(() => {
@@ -134,20 +135,12 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
     } else if (booking.status === 'on_the_way') {
       updateStatus(booking.id, 'in_progress', 'Work commenced at customer site');
     } else if (booking.status === 'in_progress') {
-      const otp = generateCompletionOtp(booking.id);
-
-      if (!otp) {
-        Alert.alert(
-          'Error',
-          'Unable to generate completion code.'
-        );
-        return;
-      }
+      const currentBooking = bookings.find((b) => b.id === booking.id) || booking;
+      const otp = currentBooking.completionOtp || generateCompletionOtp(booking.id);
 
       setSelectedBooking({
-        ...booking,
-        completionOtp: otp,
-        completionOtpVerified: false,
+        ...currentBooking,
+        completionOtp: otp || currentBooking.completionOtp,
       });
 
       setEnteredOtp('');
@@ -281,13 +274,21 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
               />
 
               <Button
-                title="Verify & Complete"
+                title={isCompleting ? 'Verifying...' : 'Verify & Complete'}
+                disabled={isCompleting}
                 onPress={async () => {
-                  if (!selectedBooking) {
+                  if (!selectedBooking || isCompleting) {
                     return;
                   }
 
-                  if (enteredOtp.length !== 4) {
+                  if (selectedBooking.status === 'completed') {
+                    Alert.alert('Already Completed', 'This job has already been verified and marked completed.');
+                    setOtpModalVisible(false);
+                    return;
+                  }
+
+                  const cleanOtp = enteredOtp.trim();
+                  if (cleanOtp.length !== 4) {
                     Alert.alert(
                       'Invalid Code',
                       'Please enter the 4-digit customer completion code.'
@@ -295,34 +296,43 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
                     return;
                   }
 
-                  const verified = verifyCompletionOtp(
-                    selectedBooking.id,
-                    enteredOtp
-                  );
+                  const currentBooking = bookings.find((b) => b.id === selectedBooking.id) || selectedBooking;
+                  const expectedOtp = currentBooking.completionOtp?.trim();
 
-                  if (!verified) {
+                  if (!expectedOtp || expectedOtp !== cleanOtp) {
                     Alert.alert(
                       'Incorrect Code',
-                      'The code is incorrect. The job has not been completed.'
+                      'The 4-digit verification code is incorrect. Please ask the customer to check the code displayed on their screen.'
                     );
                     return;
                   }
 
-                  const completed = await updateStatus(
-                    selectedBooking.id,
-                    'completed',
-                    'Job successfully completed after customer OTP verification'
-                  );
+                  setIsCompleting(true);
+                  try {
+                    verifyCompletionOtp(currentBooking.id, cleanOtp);
 
-                  if (completed) {
-                    setOtpModalVisible(false);
-                    setSelectedBooking(null);
-                    setEnteredOtp('');
-
-                    Alert.alert(
-                      'Job Completed',
-                      `Payment of ₹${selectedBooking.estimatedAmount} marked for direct bank settlement.`
+                    const completed = await updateStatus(
+                      currentBooking.id,
+                      'completed',
+                      'Job successfully completed after customer 4-digit code verification'
                     );
+
+                    if (completed) {
+                      setOtpModalVisible(false);
+                      setSelectedBooking(null);
+                      setEnteredOtp('');
+
+                      Alert.alert(
+                        'Job Completed',
+                        `Work verified and marked completed! Payment of ₹${completed.finalAmount || completed.estimatedAmount} queued for direct bank settlement.`
+                      );
+                    } else {
+                      Alert.alert('Error', 'Unable to mark job completed. Please try again.');
+                    }
+                  } catch (err: any) {
+                    Alert.alert('Completion Error', err?.message || 'Unable to complete job.');
+                  } finally {
+                    setIsCompleting(false);
                   }
                 }}
                 variant="primary"

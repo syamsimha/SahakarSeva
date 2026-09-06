@@ -24,6 +24,13 @@ class BookingService {
     status?: BookingStatus;
   }): Promise<Booking[]> {
     const all = await databaseService.getBookings();
+    all.forEach((b) => {
+      if (!b.completionOtp) {
+        b.completionOtp = Math.floor(1000 + Math.random() * 9000).toString();
+        b.completionOtpVerified = false;
+        databaseService.saveBooking(b);
+      }
+    });
     this.bookings = all;
     let list = [...all];
     if (filters?.customerId) {
@@ -49,10 +56,13 @@ class BookingService {
   ): Promise<Booking> {
     const randId = Math.floor(1000 + Math.random() * 9000);
     const now = new Date().toISOString();
+    const otp = bookingData.completionOtp || Math.floor(1000 + Math.random() * 9000).toString();
     const newBooking: Booking = {
       ...bookingData,
       id: `bk-${Date.now()}`,
       bookingCode: `SS-BLR-${randId}`,
+      completionOtp: otp,
+      completionOtpVerified: false,
       createdAt: now,
       statusHistory: [
         {
@@ -175,6 +185,8 @@ class BookingService {
       isEmergency: true,
       isPriority: true,
       status: 'accepted',
+      completionOtp: Math.floor(1000 + Math.random() * 9000).toString(),
+      completionOtpVerified: false,
       estimatedAmount: params.estimatedAmount,
       welfareCessAmount: params.welfareCessAmount ?? Math.round(params.estimatedAmount * 0.05),
       paymentMethod: params.paymentMethod || 'upi',
@@ -243,6 +255,8 @@ class BookingService {
 
     if (newStatus === 'completed') {
       booking.paymentStatus = 'completed';
+      booking.completedAt = nowIso;
+      booking.completionOtpVerified = true;
     }
 
     const idx = this.bookings.findIndex((b) => b.id === bookingId);
@@ -538,12 +552,17 @@ class BookingService {
       return null;
     }
 
+    if (booking.completionOtp) {
+      return booking.completionOtp;
+    }
+
     const otp = Math.floor(
       1000 + Math.random() * 9000
     ).toString();
 
     booking.completionOtp = otp;
     booking.completionOtpVerified = false;
+    databaseService.saveBooking(booking);
 
     return otp;
   }
@@ -560,11 +579,12 @@ class BookingService {
       return false;
     }
 
-    if (booking.completionOtp !== otp) {
+    if (booking.completionOtp.trim() !== otp.trim()) {
       return false;
     }
 
     booking.completionOtpVerified = true;
+    databaseService.saveBooking(booking);
 
     return true;
   }
@@ -590,11 +610,11 @@ class BookingService {
   }
 
   async getReviewsForWorker(workerId: string): Promise<Review[]> {
-    const reviews = await databaseService.getReviews();
+    const reviews = await databaseService.getReviews(workerId);
     if (reviews && reviews.length > 0) {
       return reviews.filter((r) => r.workerId === workerId);
     }
-    return this.reviews.filter((r) => r.workerId === workerId);
+    return databaseService.isSupabaseConfigured() ? [] : this.reviews.filter((r) => r.workerId === workerId);
   }
 
   generateInvoice(booking: Booking): Invoice {

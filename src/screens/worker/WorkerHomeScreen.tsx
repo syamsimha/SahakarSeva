@@ -50,18 +50,21 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
   const [workerReviews, setWorkerReviews] = useState<Review[]>([]);
 
   useEffect(() => {
-    const workerId = worker?.id || 'worker-101';
-    bookingService.getReviewsForWorker(workerId).then(setWorkerReviews);
+    if (worker?.id) {
+      bookingService.getReviewsForWorker(worker.id).then(setWorkerReviews);
+    } else {
+      setWorkerReviews([]);
+    }
   }, [worker?.id, bookings]);
 
   // Dynamic profession label for worker (e.g., "Plumber", "Electrician", "Carpenter", etc.)
   const workerProfession = getWorkerProfessionLabel(worker);
 
   // Dynamic worker rating
-  const avgRating = workerReviews.length > 0
-    ? workerReviews.reduce((sum, r) => sum + r.rating, 0) / workerReviews.length
-    : (worker?.rating || 5.0);
   const totalReviewsCount = workerReviews.length;
+  const avgRating = totalReviewsCount > 0
+    ? workerReviews.reduce((sum, r) => sum + r.rating, 0) / totalReviewsCount
+    : (worker?.reviewCount && worker.reviewCount > 0 && worker?.rating ? worker.rating : null);
 
   // Active jobs strictly belonging to this worker
   const activeJobs = bookings.filter(
@@ -71,6 +74,22 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
   );
   const hasActiveJob = activeJobs.length > 0;
   const isVerified = worker?.verificationStatus === 'verified';
+
+  // Completed jobs strictly belonging to this worker
+  const completedJobs = bookings.filter(
+    (b) => b.workerId === worker?.id && b.status === 'completed'
+  );
+
+  // Real today's earnings computed from actual completed jobs today
+  const todayDateStr = new Date().toISOString().split('T')[0];
+  const todayCompletedJobs = completedJobs.filter((b) => {
+    const jobDate = b.completedAt ? b.completedAt.split('T')[0] : b.scheduledDate;
+    return jobDate === todayDateStr;
+  });
+  const todayFairEarnings = todayCompletedJobs.reduce(
+    (sum, b) => sum + (b.finalAmount ?? b.estimatedAmount),
+    0
+  );
 
   // Pending requests strictly matching worker's profession / category
   const pendingRequests = bookings.filter(
@@ -153,11 +172,15 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
         {/* Quick KPI Strip with Working Navigation */}
         <View style={styles.statsGrid}>
           <StatCard
-            title={t('today_fair_earnings')}
-            value="₹1,240"
+            title={t('today_fair_earnings') || "Today's Earnings"}
+            value={`₹${todayFairEarnings.toLocaleString('en-IN')}`}
             icon="cash-outline"
             color={colors.primary}
-            subtitle={t('direct_transfer_today')}
+            subtitle={
+              todayCompletedJobs.length > 0
+                ? `${todayCompletedJobs.length} job${todayCompletedJobs.length > 1 ? 's' : ''} completed`
+                : (t('direct_transfer_today') || 'Direct cooperative transfer')
+            }
             onPress={onNavigateToEarnings}
           />
           <StatCard
@@ -181,10 +204,14 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
           />
           <StatCard
             title="Cooperative Rating"
-            value={`${avgRating.toFixed(1)} ★`}
+            value={avgRating != null ? `${avgRating.toFixed(1)} ★` : 'New'}
             icon="star-outline"
             color="#EAB308"
-            subtitle={`${totalReviewsCount} ${totalReviewsCount === 1 ? 'review' : 'reviews'}`}
+            subtitle={
+              totalReviewsCount > 0
+                ? `${totalReviewsCount} ${totalReviewsCount === 1 ? 'review' : 'reviews'}`
+                : 'No ratings yet'
+            }
             onPress={onNavigateToProfile || onNavigateToEarnings}
           />
         </View>
@@ -335,7 +362,7 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
                 <Text style={styles.countText}>{totalReviewsCount}</Text>
               </View>
             </View>
-            <StarRating rating={avgRating} count={totalReviewsCount} size={13} />
+            <StarRating rating={avgRating ?? 0} count={totalReviewsCount} size={13} />
           </View>
 
           {workerReviews.length === 0 ? (

@@ -174,10 +174,17 @@ CREATE TABLE IF NOT EXISTS public.bookings (
     is_emergency BOOLEAN DEFAULT false,
     payment_method payment_method DEFAULT 'cash',
     payment_status payment_status DEFAULT 'pending',
+    completion_otp VARCHAR(6),
+    completion_otp_verified BOOLEAN DEFAULT false,
     status_history JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Idempotent migration additions for existing public.bookings:
+ALTER TABLE public.bookings
+ADD COLUMN IF NOT EXISTS completion_otp VARCHAR(6),
+ADD COLUMN IF NOT EXISTS completion_otp_verified BOOLEAN DEFAULT false;
 
 -- Reviews Table
 CREATE TABLE IF NOT EXISTS public.reviews (

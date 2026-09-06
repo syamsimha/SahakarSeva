@@ -6,69 +6,109 @@ import { StatCard } from '../../components/cards';
 import { Button } from '../../components/ui';
 import { Ionicons } from '@expo/vector-icons';
 import { formatReadableDate } from '../../utils/dateTime';
+import { useAuth } from '../../context/AuthContext';
+import { useBookings } from '../../context/BookingContext';
+import { WorkerProfile } from '../../types';
 
 interface WorkerEarningsScreenProps {
   onBack?: () => void;
 }
 
 export const WorkerEarningsScreen: React.FC<WorkerEarningsScreenProps> = ({ onBack }) => {
-  const [period, setPeriod] = useState<'week' | 'month'>('week');
+  const { user } = useAuth();
+  const { bookings } = useBookings();
+  const worker = user as WorkerProfile;
+
+  // Real completed jobs strictly belonging to this authenticated worker
+  const completedJobs = bookings.filter(
+    (b) => b.workerId === worker?.id && b.status === 'completed'
+  );
 
   const now = new Date();
-  const d3 = new Date(now);
-  d3.setDate(now.getDate() - 3);
-  const d5 = new Date(now);
-  d5.setDate(now.getDate() - 5);
+  const todayDateStr = now.toISOString().split('T')[0];
 
-  const transactions = [
-    {
-      id: 'tx-101',
-      date: 'Today, 11:45 AM',
-      customer: 'Ananya Deshmukh',
-      service: 'Switchboard Repair & Socket',
-      amount: 349,
-      status: 'completed',
-      bankRef: 'CAN-NEFT-88910',
-    },
-    {
-      id: 'tx-102',
-      date: 'Yesterday, 04:30 PM',
-      customer: 'Dr. Venkat Raman',
-      service: 'Complete Room Wiring Check',
-      amount: 599,
-      status: 'completed',
-      bankRef: 'CAN-NEFT-88842',
-    },
-    {
-      id: 'tx-103',
-      date: formatReadableDate(d3),
-      customer: 'Kavita Hegde',
-      service: 'Ceiling Fan Installation',
-      amount: 299,
-      status: 'completed',
-      bankRef: 'CAN-NEFT-88719',
-    },
-    {
-      id: 'tx-104',
-      date: formatReadableDate(d5),
-      customer: 'Priya Nambiar',
-      service: 'Inverter Battery Setup',
-      amount: 750,
-      status: 'completed',
-      bankRef: 'CAN-NEFT-88602',
-    },
-  ];
+  const todayJobs = completedJobs.filter((b) => {
+    const d = b.completedAt ? b.completedAt.split('T')[0] : b.scheduledDate;
+    return d === todayDateStr;
+  });
 
-  // Bar chart data for weekly breakdown
-  const weeklyBars = [
-    { day: 'Mon', amount: 650, heightPct: 40 },
-    { day: 'Tue', amount: 890, heightPct: 60 },
-    { day: 'Wed', amount: 1240, heightPct: 85 },
-    { day: 'Thu', amount: 780, heightPct: 50 },
-    { day: 'Fri', amount: 1450, heightPct: 100 },
-    { day: 'Sat', amount: 1100, heightPct: 75 },
-    { day: 'Sun', amount: 550, heightPct: 35 },
-  ];
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const weekJobs = completedJobs.filter((b) => {
+    const d = new Date(b.completedAt || b.scheduledDate);
+    return d >= sevenDaysAgo;
+  });
+
+  const totalEarnings = completedJobs.reduce(
+    (sum, b) => sum + (b.finalAmount ?? b.estimatedAmount),
+    0
+  );
+  const todayEarnings = todayJobs.reduce(
+    (sum, b) => sum + (b.finalAmount ?? b.estimatedAmount),
+    0
+  );
+  const weekEarnings = weekJobs.reduce(
+    (sum, b) => sum + (b.finalAmount ?? b.estimatedAmount),
+    0
+  );
+
+  // Total welfare cess credited towards cooperative fund
+  const totalWelfareCess = completedJobs.reduce(
+    (sum, b) => sum + (b.welfareCessAmount || Math.round((b.finalAmount ?? b.estimatedAmount) * 0.05)),
+    0
+  );
+
+  // Dynamic weekly bar chart based on actual completed jobs (past 7 days ending today)
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const dateStr = d.toISOString().split('T')[0];
+    const dayJobs = completedJobs.filter((b) => {
+      const bDate = b.completedAt ? b.completedAt.split('T')[0] : b.scheduledDate;
+      return bDate === dateStr;
+    });
+    const amount = dayJobs.reduce((sum, b) => sum + (b.finalAmount ?? b.estimatedAmount), 0);
+    return {
+      day: dayNames[d.getDay()],
+      amount,
+    };
+  });
+
+  const maxDayAmount = Math.max(...last7Days.map((d) => d.amount), 1);
+  const weeklyBars = last7Days.map((d) => ({
+    day: d.day,
+    amount: d.amount,
+    heightPct: d.amount > 0 ? Math.max(15, Math.round((d.amount / maxDayAmount) * 100)) : 0,
+  }));
+
+  // Real transactions from completed jobs
+  const transactions = completedJobs
+    .slice()
+    .sort((a, b) => {
+      const timeA = new Date(a.completedAt || a.createdAt).getTime();
+      const timeB = new Date(b.completedAt || b.createdAt).getTime();
+      return timeB - timeA;
+    })
+    .map((b) => {
+      let dateDisplay = b.scheduledDate;
+      if (b.completedAt) {
+        const cDate = new Date(b.completedAt);
+        const isToday = b.completedAt.split('T')[0] === todayDateStr;
+        dateDisplay = isToday
+          ? `Today, ${cDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          : formatReadableDate(cDate);
+      }
+      return {
+        id: `tx-${b.id}`,
+        date: dateDisplay,
+        customer: b.customerName,
+        service: b.serviceTitle,
+        amount: b.finalAmount ?? b.estimatedAmount,
+        status: 'completed',
+        bankRef: b.bookingCode || 'COOP-SETTLE',
+      };
+    });
 
   return (
     <View style={styles.container}>
@@ -82,20 +122,24 @@ export const WorkerEarningsScreen: React.FC<WorkerEarningsScreenProps> = ({ onBa
         {/* Main Balance Hero Card */}
         <View style={styles.heroCard}>
           <Text style={styles.heroLabel}>Total Payout Balance</Text>
-          <Text style={styles.heroAmount}>₹14,840</Text>
+          <Text style={styles.heroAmount}>₹{totalEarnings.toLocaleString('en-IN')}</Text>
           <Text style={styles.heroSub}>
-            Direct cooperative fair-wage settlement linked to Canara Bank A/C ending •••• 4219
+            {worker?.bankAccountLinked
+              ? 'Direct cooperative fair-wage settlement linked to verified cooperative bank account'
+              : 'Direct cooperative fair-wage settlement (Bank account details pending setup)'}
           </Text>
 
           <View style={styles.heroFooter}>
             <View style={styles.heroMetric}>
               <Text style={styles.heroMetricLabel}>Pending Payout</Text>
-              <Text style={styles.heroMetricVal}>₹948</Text>
+              <Text style={styles.heroMetricVal}>₹{todayEarnings.toLocaleString('en-IN')}</Text>
             </View>
             <View style={styles.heroDivider} />
             <View style={styles.heroMetric}>
-              <Text style={styles.heroMetricLabel}>Settled This Month</Text>
-              <Text style={styles.heroMetricVal}>₹13,892</Text>
+              <Text style={styles.heroMetricLabel}>Settled Previously</Text>
+              <Text style={styles.heroMetricVal}>
+                ₹{Math.max(0, totalEarnings - todayEarnings).toLocaleString('en-IN')}
+              </Text>
             </View>
           </View>
         </View>
@@ -104,17 +148,17 @@ export const WorkerEarningsScreen: React.FC<WorkerEarningsScreenProps> = ({ onBa
         <View style={styles.kpiRow}>
           <StatCard
             title="Today's Earnings"
-            value="₹1,240"
+            value={`₹${todayEarnings.toLocaleString('en-IN')}`}
             icon="today-outline"
             color={colors.primary}
-            trend="+18%"
+            subtitle={todayJobs.length > 0 ? `${todayJobs.length} completed today` : 'No jobs today'}
           />
           <StatCard
             title="This Week"
-            value="₹6,660"
+            value={`₹${weekEarnings.toLocaleString('en-IN')}`}
             icon="calendar-outline"
             color={colors.accent}
-            trend="+12%"
+            subtitle={weekJobs.length > 0 ? `${weekJobs.length} jobs this week` : 'No jobs this week'}
           />
         </View>
 
@@ -122,7 +166,7 @@ export const WorkerEarningsScreen: React.FC<WorkerEarningsScreenProps> = ({ onBa
         <View style={styles.chartCard}>
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>Weekly Income Breakdown</Text>
-            <Text style={styles.chartTotal}>₹6,660 Total</Text>
+            <Text style={styles.chartTotal}>₹{weekEarnings.toLocaleString('en-IN')} Total</Text>
           </View>
 
           <View style={styles.barsContainer}>
@@ -144,31 +188,41 @@ export const WorkerEarningsScreen: React.FC<WorkerEarningsScreenProps> = ({ onBa
           <View style={styles.welfareTextCol}>
             <Text style={styles.welfareHeading}>100% Cooperative Fair-Wage Compliance</Text>
             <Text style={styles.welfareText}>
-              Your cooperative charges zero platform commissions. A nominal 5% customer cess was credited to your health insurance fund (Current corpus: ₹3,420).
+              Your cooperative charges zero platform commissions. A nominal 5% customer cess was credited to your welfare corpus (Current corpus: ₹{totalWelfareCess.toLocaleString('en-IN')}).
             </Text>
           </View>
         </View>
 
         {/* Transaction History */}
         <Text style={styles.sectionTitle}>Recent Settlements</Text>
-        {transactions.map((tx) => (
-          <View key={tx.id} style={styles.txCard}>
-            <View style={styles.txLeft}>
-              <View style={styles.txIconBox}>
-                <Ionicons name="arrow-down-circle" size={22} color={colors.success} />
+        {transactions.length > 0 ? (
+          transactions.map((tx) => (
+            <View key={tx.id} style={styles.txCard}>
+              <View style={styles.txLeft}>
+                <View style={styles.txIconBox}>
+                  <Ionicons name="arrow-down-circle" size={22} color={colors.success} />
+                </View>
+                <View>
+                  <Text style={styles.txCustomer}>{tx.customer}</Text>
+                  <Text style={styles.txService}>{tx.service}</Text>
+                  <Text style={styles.txDate}>{tx.date} • {tx.bankRef}</Text>
+                </View>
               </View>
-              <View>
-                <Text style={styles.txCustomer}>{tx.customer}</Text>
-                <Text style={styles.txService}>{tx.service}</Text>
-                <Text style={styles.txDate}>{tx.date} • {tx.bankRef}</Text>
+              <View style={styles.txRight}>
+                <Text style={styles.txAmount}>+₹{tx.amount}</Text>
+                <Text style={styles.txSettled}>Settled</Text>
               </View>
             </View>
-            <View style={styles.txRight}>
-              <Text style={styles.txAmount}>+₹{tx.amount}</Text>
-              <Text style={styles.txSettled}>Settled</Text>
-            </View>
+          ))
+        ) : (
+          <View style={styles.emptyTxBox}>
+            <Ionicons name="receipt-outline" size={36} color={colors.textMuted} />
+            <Text style={styles.emptyTxTitle}>No earnings yet</Text>
+            <Text style={styles.emptyTxSub}>
+              Completed service jobs and cooperative payouts will appear here in real-time.
+            </Text>
           </View>
-        ))}
+        )}
       </ScrollView>
     </View>
   );
@@ -220,6 +274,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: 'rgba(255, 255, 255, 0.7)',
     textTransform: 'uppercase',
+    fontWeight: '600',
   },
   heroMetricVal: {
     fontSize: 16,
@@ -229,14 +284,13 @@ const styles = StyleSheet.create({
   },
   heroDivider: {
     width: 1,
-    height: '80%',
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignSelf: 'center',
-    marginHorizontal: spacing.sm,
+    marginHorizontal: spacing.md,
   },
   kpiRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
   chartCard: {
     backgroundColor: colors.surface,
@@ -265,56 +319,54 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    height: 120,
-    paddingTop: 16,
+    height: 140,
+    paddingTop: spacing.sm,
   },
   barCol: {
     alignItems: 'center',
     flex: 1,
   },
   barVal: {
-    fontSize: 8,
-    fontWeight: '600',
+    fontSize: 9,
     color: colors.textMuted,
     marginBottom: 4,
   },
   barTrack: {
-    width: 14,
-    height: 70,
-    backgroundColor: colors.background,
-    borderRadius: 7,
+    width: 18,
+    height: 90,
+    backgroundColor: colors.border,
+    borderRadius: borderRadius.sm,
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
   barFill: {
     width: '100%',
     backgroundColor: colors.primary,
-    borderRadius: 7,
+    borderRadius: borderRadius.sm,
   },
   barDay: {
     fontSize: 10,
     color: colors.textSecondary,
-    marginTop: 4,
+    marginTop: 6,
     fontWeight: '600',
   },
   welfareBox: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.primaryLight,
+    backgroundColor: '#ECFDF5',
+    borderRadius: borderRadius.md,
     padding: spacing.md,
-    borderRadius: borderRadius.lg,
     marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(13, 122, 95, 0.2)',
+    borderColor: '#A7F3D0',
   },
   welfareTextCol: {
-    marginLeft: spacing.sm,
     flex: 1,
+    marginLeft: spacing.sm,
   },
   welfareHeading: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.primaryDark,
+    color: '#065F46',
   },
   welfareText: {
     fontSize: 11,
@@ -373,5 +425,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.success,
     marginTop: 1,
+  },
+  emptyTxBox: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  emptyTxTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  emptyTxSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 16,
   },
 });

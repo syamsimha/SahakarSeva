@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured, getAppRedirectUrl } from '../lib/supaba
 import { AppUser, UserRole, WorkerProfile, CooperativeAdmin, Customer } from '../types';
 import { mockCustomer, mockWorkerUser, mockAdminUser } from '../data';
 import { databaseService, storage } from './db/databaseService';
+import { documentService } from './documentService';
 
 const SESSION_INIT_KEY = 'sahakar_initial_auth_seeded';
 
@@ -246,9 +247,9 @@ class AuthService {
           certifications: workerData?.certifications || [],
           hourlyRate: workerData?.hourly_rate || 200,
           baseRate: workerData?.base_rate || 350,
-          rating: workerData?.rating ? Number(workerData.rating) : 4.8,
-          reviewCount: workerData?.review_count || 0,
-          completedJobsCount: workerData?.completed_jobs_count || 0,
+          rating: workerData?.review_count && Number(workerData.review_count) > 0 ? (Number(workerData.rating) || 0) : 0,
+          reviewCount: Number(workerData?.review_count) || 0,
+          completedJobsCount: Number(workerData?.completed_jobs_count) || 0,
           isAvailable: workerData?.is_available ?? true,
           serviceArea: workerData?.service_area || 'Indiranagar',
           serviceRadiusKm: workerData?.service_radius_km || 10,
@@ -757,25 +758,52 @@ class AuthService {
         throw new Error('An account with this email address already exists.');
       }
 
-      // If worker documents are provided, record them in PostgreSQL
+      // If worker documents are provided, upload to Supabase Storage and record in PostgreSQL
       if (payload.role === 'worker' && data.user) {
         try {
           if (payload.identityDoc) {
+            let storagePath = payload.identityDoc.uri;
+            if (isSupabaseConfigured()) {
+              const uploadRes = await documentService.uploadWorkerDocument(
+                data.user.id,
+                payload.identityDoc as any,
+                'aadhaar'
+              );
+              if (uploadRes.success && uploadRes.storagePath) {
+                storagePath = uploadRes.storagePath;
+              } else if (uploadRes.error) {
+                console.warn('[AuthService.register] Aadhaar upload notice:', uploadRes.error);
+              }
+            }
             await supabase.from('worker_documents').insert({
               worker_id: data.user.id,
               document_name: payload.identityDoc.name,
               document_type: 'aadhaar',
               status: 'uploaded',
-              file_url: payload.identityDoc.uri,
+              file_url: storagePath,
             });
           }
+
           if (payload.skillCertDoc) {
+            let storagePath = payload.skillCertDoc.uri;
+            if (isSupabaseConfigured()) {
+              const uploadRes = await documentService.uploadWorkerDocument(
+                data.user.id,
+                payload.skillCertDoc as any,
+                'skill_certificate'
+              );
+              if (uploadRes.success && uploadRes.storagePath) {
+                storagePath = uploadRes.storagePath;
+              } else if (uploadRes.error) {
+                console.warn('[AuthService.register] Skill certificate upload notice:', uploadRes.error);
+              }
+            }
             await supabase.from('worker_documents').insert({
               worker_id: data.user.id,
               document_name: payload.skillCertDoc.name,
               document_type: 'skill_certificate',
               status: 'uploaded',
-              file_url: payload.skillCertDoc.uri,
+              file_url: storagePath,
             });
           }
         } catch (docErr) {

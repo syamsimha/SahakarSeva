@@ -8,11 +8,14 @@ import {
   Modal,
   ScrollView,
   Linking,
+  Image,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
 import { Avatar, Badge, Button, EmptyState } from '../../components/ui';
-import { workerService } from '../../services';
+import { workerService, documentService } from '../../services';
 import { useLocation } from '../../context/LocationContext';
 import { WorkerProfile, WorkerDocument, WorkerVerificationStatus } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +36,9 @@ export const WorkerVerificationAdminScreen: React.FC<WorkerVerificationAdminScre
     worker: WorkerProfile;
   } | null>(null);
   const [docValidated, setDocValidated] = useState<boolean>(false);
+  const [docSignedUrl, setDocSignedUrl] = useState<string | null>(null);
+  const [loadingDocUrl, setLoadingDocUrl] = useState<boolean>(false);
+  const [docUrlError, setDocUrlError] = useState<string | null>(null);
 
   // Action feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -54,6 +60,44 @@ export const WorkerVerificationAdminScreen: React.FC<WorkerVerificationAdminScre
   const showFeedback = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleSelectDoc = async (doc: WorkerDocument, worker: WorkerProfile) => {
+    setSelectedDoc({ doc, worker });
+    setDocValidated(doc.status === 'verified');
+    setLoadingDocUrl(true);
+    setDocUrlError(null);
+    setDocSignedUrl(null);
+
+    try {
+      const signedUrl = await documentService.getDocumentSignedUrl(doc.fileUrl);
+      if (signedUrl) {
+        setDocSignedUrl(signedUrl);
+      } else {
+        setDocUrlError('Could not retrieve secure viewing link for this document.');
+      }
+    } catch (err: any) {
+      setDocUrlError(err?.message || 'Failed to load document');
+    } finally {
+      setLoadingDocUrl(false);
+    }
+  };
+
+  const handleOpenExternal = (url: string | null) => {
+    if (!url) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(url, '_blank');
+    } else {
+      Linking.openURL(url).catch(() => {
+        showFeedback('Unable to open document on this device');
+      });
+    }
+  };
+
+  const isPdf = (doc: WorkerDocument) => {
+    const name = (doc.name || '').toLowerCase();
+    const url = (doc.fileUrl || '').toLowerCase();
+    return name.endsWith('.pdf') || url.includes('.pdf');
   };
 
   const handleApprove = async (worker: WorkerProfile) => {
@@ -190,18 +234,14 @@ export const WorkerVerificationAdminScreen: React.FC<WorkerVerificationAdminScre
             </View>
 
             {/* Submitted Documents Inspection Box */}
-            <Text style={styles.docsHeader}>Uploaded Verification Proofs (ID Proof & Skill Certificate):</Text>
-            <View style={styles.docsGrid}>
-              {item.documents
-                .filter((doc) => doc.type === 'aadhaar' || doc.type === 'skill_certificate')
-                .map((doc) => (
+            <Text style={styles.docsHeader}>Uploaded Verification Proofs:</Text>
+            {item.documents && item.documents.length > 0 ? (
+              <View style={styles.docsGrid}>
+                {item.documents.map((doc) => (
                   <TouchableOpacity
                     key={doc.id}
                     style={styles.docItem}
-                    onPress={() => {
-                      setSelectedDoc({ doc, worker: item });
-                      setDocValidated(doc.status === 'verified');
-                    }}
+                    onPress={() => handleSelectDoc(doc, item)}
                     activeOpacity={0.7}
                   >
                     <Ionicons
@@ -213,7 +253,13 @@ export const WorkerVerificationAdminScreen: React.FC<WorkerVerificationAdminScre
                     <Ionicons name="eye-outline" size={16} color={colors.textSecondary} />
                   </TouchableOpacity>
                 ))}
-            </View>
+              </View>
+            ) : (
+              <View style={styles.noDocsContainer}>
+                <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+                <Text style={styles.noDocsText}>No verification documents uploaded</Text>
+              </View>
+            )}
 
             {/* About note */}
             <Text style={styles.aboutText}>"{item.about}"</Text>
@@ -286,35 +332,84 @@ export const WorkerVerificationAdminScreen: React.FC<WorkerVerificationAdminScre
                   {/* Document Badge Card */}
                   <View style={styles.docInspectionCard}>
                     <View style={styles.docHeaderRow}>
-                      <Ionicons name="shield-checkmark" size={24} color={colors.primary} />
+                      <Ionicons
+                        name={selectedDoc.doc.type === 'aadhaar' ? 'card-outline' : 'ribbon-outline'}
+                        size={24}
+                        color={colors.primary}
+                      />
                       <View style={{ flex: 1, marginLeft: 8 }}>
                         <Text style={styles.docInspectionTitle}>{selectedDoc.doc.name}</Text>
-                        <Text style={styles.docType}>Type: {selectedDoc.doc.type.toUpperCase()}</Text>
+                        <Text style={styles.docType}>
+                          {selectedDoc.doc.type === 'aadhaar'
+                            ? 'IDENTITY PROOF (AADHAAR)'
+                            : selectedDoc.doc.type === 'skill_certificate'
+                            ? 'TRADE SKILL CERTIFICATE'
+                            : selectedDoc.doc.type.toUpperCase()}
+                        </Text>
                       </View>
                       <Badge
-                        variant="verified"
+                        variant={docValidated ? 'verified' : 'status'}
                         label={docValidated ? 'VERIFIED' : 'PENDING AUDIT'}
                       />
                     </View>
 
-                    {/* Certificate Mock Preview Box */}
-                    <View style={styles.certificatePreviewBox}>
-                      <View style={styles.certEmblemRow}>
-                        <Ionicons name="ribbon-outline" size={28} color={colors.primary} />
-                        <Text style={styles.certGovtHeading}>{govtHeading} / NCVT</Text>
-                      </View>
-                      <Text style={styles.certSerial}>SERIAL NO: DOC-{(currentLocation.state || currentLocation.city).slice(0, 2).toUpperCase()}-2024-{selectedDoc.doc.id.toUpperCase()}-SEC</Text>
-                      <View style={styles.certDetailsGrid}>
-                        <Text style={styles.certDetailLine}>• Holder: {selectedDoc.worker.name}</Text>
-                        <Text style={styles.certDetailLine}>• Affiliated Guild: {selectedDoc.worker.cooperativeName}</Text>
-                        <Text style={styles.certDetailLine}>• Trade: {selectedDoc.worker.primarySkill}</Text>
-                        <Text style={styles.certDetailLine}>• Tamper Hash: SHA256:7f8a92bc18e3d540</Text>
-                        <Text style={styles.certDetailLine}>• Date Uploaded: {new Date(selectedDoc.doc.uploadedAt).toLocaleDateString('en-IN')}</Text>
-                      </View>
-                      <View style={styles.certStamp}>
-                        <Ionicons name="checkmark-done-circle" size={20} color={colors.success} />
-                        <Text style={styles.certStampText}>Cooperative Hologram Authenticated</Text>
-                      </View>
+                    {/* Real Document Viewer */}
+                    <View style={styles.viewerContainer}>
+                      {loadingDocUrl ? (
+                        <View style={styles.viewerLoadingBox}>
+                          <ActivityIndicator size="large" color={colors.primary} />
+                          <Text style={styles.viewerLoadingText}>Loading secure document view...</Text>
+                        </View>
+                      ) : docUrlError ? (
+                        <View style={styles.viewerErrorBox}>
+                          <Ionicons name="alert-circle-outline" size={32} color={colors.danger} />
+                          <Text style={styles.viewerErrorText}>{docUrlError}</Text>
+                        </View>
+                      ) : docSignedUrl ? (
+                        isPdf(selectedDoc.doc) ? (
+                          <View style={styles.pdfCard}>
+                            <Ionicons name="document-text" size={48} color={colors.primary} />
+                            <Text style={styles.pdfCardName}>{selectedDoc.doc.name}</Text>
+                            <Text style={styles.pdfCardType}>PDF Document</Text>
+                            <TouchableOpacity
+                              style={styles.openPdfBtn}
+                              onPress={() => handleOpenExternal(docSignedUrl)}
+                            >
+                              <Ionicons name="open-outline" size={16} color="#FFF" />
+                              <Text style={styles.openPdfBtnText}>Open / View PDF</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <View style={styles.imageCard}>
+                            <Image
+                              source={{ uri: docSignedUrl }}
+                              style={styles.realDocImage}
+                              resizeMode="contain"
+                            />
+                            <TouchableOpacity
+                              style={styles.openExternalBtn}
+                              onPress={() => handleOpenExternal(docSignedUrl)}
+                            >
+                              <Ionicons name="open-outline" size={14} color={colors.primary} />
+                              <Text style={styles.openExternalText}>Open Full Image</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )
+                      ) : (
+                        <View style={styles.viewerErrorBox}>
+                          <Text style={styles.viewerErrorText}>No document preview available.</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Document Metadata Details */}
+                    <View style={styles.docMetaGrid}>
+                      <Text style={styles.docMetaLine}>• Worker: {selectedDoc.worker.name}</Text>
+                      <Text style={styles.docMetaLine}>• Society: {selectedDoc.worker.cooperativeName}</Text>
+                      <Text style={styles.docMetaLine}>• Trade: {selectedDoc.worker.primarySkill}</Text>
+                      <Text style={styles.docMetaLine}>
+                        • Uploaded: {new Date(selectedDoc.doc.uploadedAt).toLocaleDateString('en-IN')}
+                      </Text>
                     </View>
                   </View>
 
@@ -324,8 +419,20 @@ export const WorkerVerificationAdminScreen: React.FC<WorkerVerificationAdminScre
                       title={docValidated ? 'Document Validated ✅' : 'Validate & Mark Legible'}
                       icon="checkmark-circle-outline"
                       variant="primary"
-                      onPress={() => {
+                      onPress={async () => {
+                        await documentService.updateDocumentStatus(selectedDoc.doc.id, 'verified');
                         setDocValidated(true);
+                        setWorkersList((prev) =>
+                          prev.map((w) => {
+                            if (w.id !== selectedDoc.worker.id) return w;
+                            return {
+                              ...w,
+                              documents: w.documents.map((d) =>
+                                d.id === selectedDoc.doc.id ? { ...d, status: 'verified' as const } : d
+                              ),
+                            };
+                          })
+                        );
                         showFeedback(`Marked ${selectedDoc.doc.name} as verified!`);
                         setTimeout(() => setSelectedDoc(null), 1200);
                       }}
@@ -337,7 +444,8 @@ export const WorkerVerificationAdminScreen: React.FC<WorkerVerificationAdminScre
                       title="Request Clearer Scan"
                       icon="refresh-outline"
                       variant="outline"
-                      onPress={() => {
+                      onPress={async () => {
+                        await documentService.updateDocumentStatus(selectedDoc.doc.id, 'rejected');
                         showFeedback(`Notified worker to submit a sharper copy of ${selectedDoc.doc.name}`);
                         setSelectedDoc(null);
                       }}
@@ -504,6 +612,20 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '600',
   },
+  noDocsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.sm,
+  },
+  noDocsText: {
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '600',
+  },
   aboutText: {
     fontSize: 11,
     fontStyle: 'italic',
@@ -587,58 +709,101 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
   },
-  certificatePreviewBox: {
-    backgroundColor: '#FAFDFB',
-    padding: spacing.md,
+  viewerContainer: {
+    marginVertical: spacing.sm,
     borderRadius: borderRadius.md,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    borderStyle: 'dashed',
-    marginTop: spacing.xs,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 180,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  certEmblemRow: {
-    flexDirection: 'row',
+  viewerLoadingBox: {
+    padding: spacing.xl,
     alignItems: 'center',
     gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    paddingBottom: 6,
-    marginBottom: 8,
   },
-  certGovtHeading: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.primary,
-    letterSpacing: 0.5,
-  },
-  certSerial: {
-    fontSize: 10,
-    fontWeight: '700',
+  viewerLoadingText: {
+    fontSize: 12,
     color: colors.textSecondary,
-    marginBottom: 6,
+    fontWeight: '600',
   },
-  certDetailsGrid: {
-    gap: 3,
-    marginBottom: 8,
+  viewerErrorBox: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    gap: 8,
   },
-  certDetailLine: {
-    fontSize: 11,
+  viewerErrorText: {
+    fontSize: 12,
+    color: colors.danger,
+    textAlign: 'center',
+  },
+  pdfCard: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    width: '100%',
+  },
+  pdfCardName: {
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.text,
+    marginTop: spacing.sm,
+    textAlign: 'center',
   },
-  certStamp: {
+  pdfCardType: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  openPdfBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.successLight,
-    padding: 6,
-    borderRadius: borderRadius.sm,
-    alignSelf: 'flex-start',
-    marginTop: 4,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md,
   },
-  certStampText: {
-    fontSize: 10,
+  openPdfBtnText: {
+    color: '#FFF',
+    fontSize: 13,
     fontWeight: '700',
-    color: colors.success,
+  },
+  imageCard: {
+    width: '100%',
+    alignItems: 'center',
+    padding: spacing.sm,
+  },
+  realDocImage: {
+    width: '100%',
+    height: 300,
+    borderRadius: borderRadius.sm,
+    backgroundColor: '#F8FAFC',
+  },
+  openExternalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.sm,
+    paddingVertical: 4,
+  },
+  openExternalText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  docMetaGrid: {
+    gap: 3,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  docMetaLine: {
+    fontSize: 11,
+    color: colors.textSecondary,
   },
   docActionsBox: {
     marginTop: spacing.sm,
