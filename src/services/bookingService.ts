@@ -8,10 +8,11 @@ import {
   ServiceLocation,
 } from '../types';
 import { mockBookings, mockReviews } from '../data';
-import { isTradeMatching, getWorkerActiveJob } from '../utils/workerMatching';
+import { isTradeMatching, getWorkerActiveJob, getRequiredTradeLabel } from '../utils/workerMatching';
 import { databaseService } from './db/databaseService';
 import { workerService } from './workerService';
 import { locationService } from './locationService';
+import { notificationService } from './notificationService';
 
 class BookingService {
   private bookings: Booking[] = [...mockBookings];
@@ -350,6 +351,97 @@ class BookingService {
     this.bookings[index] = updatedBooking;
     await databaseService.saveBooking(updatedBooking);
     return updatedBooking;
+  }
+
+  /**
+   * Accepts a job request on behalf of an authenticated worker.
+   * Strictly enforces:
+   * 1. Worker authenticated & worker profile exists
+   * 2. Worker Admin verification: worker.verificationStatus === 'verified'
+   * 3. Category/Profession matching: Plumber -> Plumbing, Electrician -> Electrical, etc.
+   * 4. Single active job rule: Worker must have NO other active jobs ('accepted', 'on_the_way', 'in_progress')
+   * 5. Availability & Concurrency: Booking must still be 'requested' and unassigned.
+   */
+  async acceptJobByWorker(
+    bookingId: string,
+    worker: WorkerProfile
+  ): Promise<Booking> {
+    if (!worker || !worker.id || worker.role !== 'worker') {
+      throw new Error('Authentication required: Only authenticated workers can accept jobs.');
+    }
+
+    // 1. Enforce Admin verification
+    if (worker.verificationStatus !== 'verified') {
+      throw new Error(
+        'Admin verification required: Your profile must be verified by Admin before accepting jobs.'
+      );
+    }
+
+    // 2. Fetch current all bookings for concurrency & state checks
+    const allBookings = await this.getBookings();
+
+    // 3. Enforce single active job constraint
+    const activeJob = getWorkerActiveJob(worker.id, allBookings, bookingId);
+    if (activeJob) {
+      throw new Error(
+        `Active job in progress: You already have an ongoing assignment #${activeJob.bookingCode} (${activeJob.serviceTitle}). You can only have one active job at a time. Complete your current job first.`
+      );
+    }
+
+    // 4. Verify target booking exists
+    const targetBooking = allBookings.find((b) => b.id === bookingId);
+    if (!targetBooking) {
+      throw new Error('Job request record could not be found.');
+    }
+
+    // 5. Verify availability (must be 'requested')
+    if (targetBooking.status !== 'requested') {
+      throw new Error(
+        'This job is no longer available. It may have already been accepted by another worker or cancelled.'
+      );
+    }
+
+    if (
+      targetBooking.workerId &&
+      targetBooking.workerId !== 'unassigned' &&
+      targetBooking.workerId !== worker.id
+    ) {
+      throw new Error('This job has already been assigned to another service professional.');
+    }
+
+    // 6. Enforce strict category / profession matching
+    if (!isTradeMatching(targetBooking.categoryId, targetBooking.serviceTitle, worker)) {
+      const required = getRequiredTradeLabel(targetBooking.categoryId, targetBooking.serviceTitle);
+      throw new Error(
+        `Skill mismatch: This job (${targetBooking.serviceTitle}) requires a certified ${required} specialist. You are certified as "${worker.primarySkill}".`
+      );
+    }
+
+    // 7. Atomic acceptance execution (prevents race conditions)
+    const result = await databaseService.acceptBookingAtomic(bookingId, worker);
+    if (!result.success || !result.booking) {
+      throw new Error(result.error || 'Failed to accept job. It may have been accepted by another worker.');
+    }
+
+    // Update in-memory list
+    const idx = this.bookings.findIndex((b) => b.id === bookingId);
+    if (idx !== -1) {
+      this.bookings[idx] = result.booking;
+    } else {
+      this.bookings.push(result.booking);
+    }
+
+    // Send customer notification
+    await notificationService.sendNotification({
+      recipientRole: 'customer',
+      recipientId: result.booking.customerId,
+      title: 'Booking Accepted',
+      body: `${worker.name} (${worker.primarySkill}) has accepted your booking for ${result.booking.serviceTitle}.`,
+      type: 'booking',
+      relatedId: result.booking.id,
+    });
+
+    return result.booking;
   }
 
   /*

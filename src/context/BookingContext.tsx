@@ -310,17 +310,37 @@ export const BookingProvider: React.FC<{
   };
 
   // --------------------------------------------------
-  // ACCEPT JOB
+  // ACCEPT JOB (WORKER ACCEPTANCE)
   // --------------------------------------------------
 
   const acceptJob = async (
     bookingId: string
   ): Promise<Booking | null> => {
-    return updateStatus(
-      bookingId,
-      'accepted',
-      'Job accepted by cooperative worker'
-    );
+    if (!user) {
+      throw new Error('Please sign in as a worker to accept service jobs.');
+    }
+
+    if (user.role !== 'worker') {
+      throw new Error('Only registered cooperative workers are authorized to accept jobs.');
+    }
+
+    const worker = user as WorkerProfile;
+
+    if (worker.verificationStatus !== 'verified') {
+      throw new Error(
+        'Admin verification required: Your profile must be verified by Admin before accepting jobs.'
+      );
+    }
+
+    const updated = await bookingService.acceptJobByWorker(bookingId, worker);
+
+    if (updated) {
+      setBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? updated : b))
+      );
+    }
+
+    return updated;
   };
 
   // --------------------------------------------------

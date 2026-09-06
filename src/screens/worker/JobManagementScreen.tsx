@@ -43,7 +43,7 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
   // Stream genuine worker GPS coordinates to active jobs (on_the_way / in_progress)
   useEffect(() => {
     const activeJobs = bookings.filter(
-      (b) => b.status === 'on_the_way' || b.status === 'in_progress'
+      (b) => b.workerId === user?.id && (b.status === 'on_the_way' || b.status === 'in_progress')
     );
 
     if (activeJobs.length === 0) {
@@ -112,15 +112,17 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
   }, [bookings, user?.id]);
 
   const filterJobs = (tab: TabType): Booking[] => {
+    const workerBookings = bookings.filter((b) => b.workerId === user?.id);
+
     switch (tab) {
       case 'active':
-        return bookings.filter(
+        return workerBookings.filter(
           (b) => b.status === 'on_the_way' || b.status === 'in_progress'
         );
       case 'accepted':
-        return bookings.filter((b) => b.status === 'accepted');
+        return workerBookings.filter((b) => b.status === 'accepted');
       case 'completed':
-        return bookings.filter((b) => b.status === 'completed');
+        return workerBookings.filter((b) => b.status === 'completed');
     }
   };
 

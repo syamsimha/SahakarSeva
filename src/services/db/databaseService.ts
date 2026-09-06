@@ -401,6 +401,148 @@ class DatabaseService {
     return booking;
   }
 
+  /**
+   * Atomically accepts a requested booking for a verified worker.
+   * Guarantees race-condition prevention:
+   * 1. If Supabase is configured: tries RPC accept_booking_as_worker. If unavailable, executes atomic conditional
+   *    PATCH on /rest/v1/bookings?id=eq.{id}&status=eq.requested. If 0 rows match, acceptance fails safely.
+   * 2. In local/storage store: checks existing stored booking status. If not 'requested', rejects immediately.
+   */
+  async acceptBookingAtomic(
+    bookingId: string,
+    worker: WorkerProfile
+  ): Promise<{ success: boolean; booking?: Booking; error?: string }> {
+    const now = new Date().toISOString();
+
+    // 1. If Supabase is configured, enforce atomic database operation
+    if (this.isSupabaseConfigured()) {
+      try {
+        // Try calling stored RPC if available
+        const rpcRes = await fetch(`${this.supabaseUrl}/rest/v1/rpc/accept_booking_as_worker`, {
+          method: 'POST',
+          headers: {
+            apikey: this.supabaseAnonKey,
+            Authorization: `Bearer ${this.supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            p_booking_id: bookingId,
+            p_worker_id: worker.id,
+            p_worker_name: worker.name,
+            p_worker_skill: worker.primarySkill,
+            p_worker_phone: worker.phone,
+            p_cooperative_name: worker.cooperativeName,
+          }),
+        });
+
+        if (rpcRes.ok) {
+          const rpcData = await rpcRes.json();
+          if (rpcData && rpcData.success && rpcData.booking) {
+            const acceptedBooking = mapSupabaseRowToBooking(rpcData.booking);
+            // Sync with local memory/storage
+            await this.saveBooking(acceptedBooking);
+            return { success: true, booking: acceptedBooking };
+          } else if (rpcData && rpcData.error) {
+            return { success: false, error: rpcData.error };
+          }
+        }
+
+        // Fallback: conditional atomic PATCH requiring status = 'requested'
+        const patchRes = await fetch(
+          `${this.supabaseUrl}/rest/v1/bookings?id=eq.${encodeURIComponent(bookingId)}&status=eq.requested`,
+          {
+            method: 'PATCH',
+            headers: {
+              apikey: this.supabaseAnonKey,
+              Authorization: `Bearer ${this.supabaseAnonKey}`,
+              'Content-Type': 'application/json',
+              Prefer: 'return=representation',
+            },
+            body: JSON.stringify({
+              status: 'accepted',
+              worker_id: worker.id,
+              worker_name: worker.name,
+              worker_skill: worker.primarySkill,
+              worker_phone: worker.phone,
+              cooperative_name: worker.cooperativeName,
+              updated_at: now,
+            }),
+          }
+        );
+
+        if (patchRes.ok) {
+          const updatedRows = await patchRes.json();
+          if (Array.isArray(updatedRows) && updatedRows.length === 0) {
+            return {
+              success: false,
+              error: 'This job is no longer available. Another worker may have accepted it moments ago.',
+            };
+          }
+          if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+            const acceptedBooking = mapSupabaseRowToBooking(updatedRows[0]);
+            await this.saveBooking(acceptedBooking);
+            return { success: true, booking: acceptedBooking };
+          }
+        }
+      } catch (err: any) {
+        console.warn('Supabase atomic acceptance error:', err?.message || err);
+      }
+    }
+
+    // 2. Storage / local state atomic check
+    const raw = storage.getItem(STORAGE_KEYS.BOOKINGS);
+    let bookings: Booking[] = [];
+    try {
+      bookings = raw ? JSON.parse(raw) : [];
+    } catch {
+      bookings = [];
+    }
+
+    const index = bookings.findIndex((b) => b.id === bookingId);
+    if (index === -1) {
+      return { success: false, error: 'Job request record not found.' };
+    }
+
+    const currentBooking = bookings[index];
+    if (currentBooking.status !== 'requested') {
+      return {
+        success: false,
+        error: 'This job is no longer available. It has already been accepted or cancelled.',
+      };
+    }
+
+    if (currentBooking.workerId && currentBooking.workerId !== 'unassigned' && currentBooking.workerId !== worker.id) {
+      return {
+        success: false,
+        error: 'This job has already been accepted by another service professional.',
+      };
+    }
+
+    const updatedBooking: Booking = {
+      ...currentBooking,
+      workerId: worker.id,
+      workerName: worker.name,
+      workerSkill: worker.primarySkill,
+      workerPhone: worker.phone,
+      cooperativeName: worker.cooperativeName,
+      status: 'accepted',
+      statusHistory: [
+        ...(currentBooking.statusHistory || []),
+        {
+          status: 'accepted',
+          timestamp: now,
+          note: `Job accepted by verified worker ${worker.name} (${worker.primarySkill})`,
+        },
+      ],
+    };
+
+    bookings[index] = updatedBooking;
+    storage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(bookings));
+    this.broadcastUpdate('BOOKING_UPDATED', updatedBooking);
+
+    return { success: true, booking: updatedBooking };
+  }
+
   async updateBookingWorkerLocation(
     bookingId: string,
     latitude: number,

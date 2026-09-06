@@ -6,6 +6,7 @@ import {
   ScrollView,
   Switch,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { Header } from '../../components/common';
@@ -18,6 +19,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { bookingService } from '../../services';
 import { WorkerProfile, Review } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
+import { getWorkerProfessionLabel, isTradeMatching } from '../../utils/workerMatching';
 
 interface WorkerHomeScreenProps {
   onNavigateToJobRequests: () => void;
@@ -26,6 +28,7 @@ interface WorkerHomeScreenProps {
   onNavigateToWelfare: () => void;
   onNavigateToVerification: () => void;
   onNavigateToNotifications: () => void;
+  onNavigateToProfile?: () => void;
 }
 
 export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
@@ -35,6 +38,7 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
   onNavigateToWelfare,
   onNavigateToVerification,
   onNavigateToNotifications,
+  onNavigateToProfile,
 }) => {
   const { user } = useAuth();
   const { bookings, acceptJob, rejectJob, updateStatus } = useBookings();
@@ -50,29 +54,81 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
     bookingService.getReviewsForWorker(workerId).then(setWorkerReviews);
   }, [worker?.id, bookings]);
 
-  // Calculate rating dynamically from actual submitted reviews
+  // Dynamic profession label for worker (e.g., "Plumber", "Electrician", "Carpenter", etc.)
+  const workerProfession = getWorkerProfessionLabel(worker);
+
+  // Dynamic worker rating
   const avgRating = workerReviews.length > 0
     ? workerReviews.reduce((sum, r) => sum + r.rating, 0) / workerReviews.length
     : (worker?.rating || 5.0);
   const totalReviewsCount = workerReviews.length;
 
-  // Filter jobs
-  const pendingRequests = bookings.filter((b) => b.status === 'requested');
+  // Active jobs strictly belonging to this worker
   const activeJobs = bookings.filter(
-    (b) => b.status === 'accepted' || b.status === 'on_the_way' || b.status === 'in_progress'
+    (b) =>
+      b.workerId === worker?.id &&
+      (b.status === 'accepted' || b.status === 'on_the_way' || b.status === 'in_progress')
   );
-  const completedToday = bookings.filter((b) => b.status === 'completed');
+  const hasActiveJob = activeJobs.length > 0;
+  const isVerified = worker?.verificationStatus === 'verified';
+
+  // Pending requests strictly matching worker's profession / category
+  const pendingRequests = bookings.filter(
+    (b) =>
+      b.status === 'requested' &&
+      (!b.workerId || b.workerId === 'unassigned' || b.workerId === worker?.id) &&
+      isTradeMatching(b.categoryId, b.serviceTitle, worker)
+  );
+
+  const handleAccept = async (jobId: string) => {
+    try {
+      await acceptJob(jobId);
+      Alert.alert('Job Accepted', 'Booking moved to your Active Jobs queue. Please navigate to customer site on schedule.');
+    } catch (err: any) {
+      Alert.alert('Cannot Accept Job', err?.message || 'Job acceptance failed.');
+    }
+  };
 
   return (
     <View style={styles.container}>
       <Header
-        title={t('worker_console')}
-        subtitle={worker?.cooperativeName || 'Nagarika Seva Cooperative'}
+        title={worker?.name || t('worker_console')}
+        subtitle={workerProfession}
         onNotificationPress={onNavigateToNotifications}
         unreadNotificationsCount={unreadCount}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Verification Required Alert Banner */}
+        {!isVerified && (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={onNavigateToVerification}
+            style={styles.unverifiedBanner}
+          >
+            <View style={styles.unverifiedBannerLeft}>
+              <Ionicons name="shield-outline" size={24} color="#D97706" />
+              <View style={styles.unverifiedBannerTexts}>
+                <Text style={styles.unverifiedBannerTitle}>Admin Verification Required</Text>
+                <Text style={styles.unverifiedBannerSub}>
+                  Your profile must be verified by Admin before accepting jobs. Tap to inspect status.
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#D97706" />
+          </TouchableOpacity>
+        )}
+
+        {/* Active Job Notice Banner */}
+        {hasActiveJob && (
+          <View style={styles.activeJobBanner}>
+            <Ionicons name="construct-outline" size={20} color={colors.info} />
+            <Text style={styles.activeJobBannerText}>
+              Active job in progress. You can only work on one job at a time. Complete current job to accept new requests.
+            </Text>
+          </View>
+        )}
+
         {/* Availability Toggle Banner */}
         <View style={[styles.statusBanner, isAvailable ? styles.statusOnline : styles.statusOffline]}>
           <View style={styles.statusLeft}>
@@ -94,7 +150,7 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
           />
         </View>
 
-        {/* Quick KPI Strip */}
+        {/* Quick KPI Strip with Working Navigation */}
         <View style={styles.statsGrid}>
           <StatCard
             title={t('today_fair_earnings')}
@@ -102,13 +158,15 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
             icon="cash-outline"
             color={colors.primary}
             subtitle={t('direct_transfer_today')}
+            onPress={onNavigateToEarnings}
           />
           <StatCard
             title={t('pending_requests')}
             value={pendingRequests.length}
             icon="time-outline"
             color={colors.accent}
-            subtitle="Action required"
+            subtitle={pendingRequests.length > 0 ? `${pendingRequests.length} eligible` : 'None pending'}
+            onPress={onNavigateToJobRequests}
           />
         </View>
 
@@ -118,7 +176,8 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
             value={activeJobs.length}
             icon="construct-outline"
             color={colors.info}
-            subtitle="In progress"
+            subtitle={activeJobs.length > 0 ? 'In progress' : 'Available'}
+            onPress={onNavigateToJobManagement}
           />
           <StatCard
             title="Cooperative Rating"
@@ -126,6 +185,7 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
             icon="star-outline"
             color="#EAB308"
             subtitle={`${totalReviewsCount} ${totalReviewsCount === 1 ? 'review' : 'reviews'}`}
+            onPress={onNavigateToProfile || onNavigateToEarnings}
           />
         </View>
 
@@ -162,14 +222,25 @@ export const WorkerHomeScreen: React.FC<WorkerHomeScreenProps> = ({
               </TouchableOpacity>
             </View>
 
-            {pendingRequests.slice(0, 2).map((job) => (
-              <JobRequestCard
-                key={job.id}
-                booking={job}
-                onAccept={() => acceptJob(job.id)}
-                onReject={() => rejectJob(job.id)}
-              />
-            ))}
+            {pendingRequests.slice(0, 2).map((job) => {
+              const acceptDisabled = !isVerified || hasActiveJob;
+              const disabledReason = !isVerified
+                ? 'Your profile must be verified by Admin before accepting jobs.'
+                : hasActiveJob
+                ? 'Complete your current active job before accepting another.'
+                : undefined;
+
+              return (
+                <JobRequestCard
+                  key={job.id}
+                  booking={job}
+                  onAccept={() => handleAccept(job.id)}
+                  onReject={() => rejectJob(job.id)}
+                  isAcceptDisabled={acceptDisabled}
+                  disabledReason={disabledReason}
+                />
+              );
+            })}
           </View>
         )}
 
@@ -492,5 +563,54 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 16,
     marginTop: 2,
+  },
+  unverifiedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFBEB',
+    borderColor: '#F59E0B',
+    borderWidth: 1.5,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  unverifiedBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  unverifiedBannerTexts: {
+    marginLeft: spacing.sm,
+    flex: 1,
+  },
+  unverifiedBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  unverifiedBannerSub: {
+    fontSize: 11,
+    color: '#B45309',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  activeJobBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.infoLight,
+    borderColor: colors.info,
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  activeJobBannerText: {
+    fontSize: 12,
+    color: colors.info,
+    fontWeight: '600',
+    marginLeft: spacing.xs,
+    flex: 1,
   },
 });
