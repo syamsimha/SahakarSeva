@@ -243,28 +243,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </View>
         )}
 
-        {/* Experience Mode Switcher Banner (Hidden for Admin Dashboard) */}
-        {role !== 'admin' && (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => setRoleModalVisible(true)}
-            style={styles.switchRoleBanner}
-            accessibilityLabel="Switch active application persona"
-          >
-            <View style={styles.switchRoleLeft}>
-              <View style={styles.switchRoleIconBox}>
-                <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1, paddingRight: spacing.sm }}>
-                <Text style={styles.switchRoleTitle}>Switch Application Persona</Text>
-                <Text style={styles.switchRoleSub} numberOfLines={2}>
-                  Active role: <Text style={{ fontWeight: '700', color: colors.primaryDark }}>{role.toUpperCase()}</Text>. Tap to test Customer, Worker, or Auditor views.
-                </Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.primary} />
-          </TouchableOpacity>
-        )}
+       
 
         {/* WORKER SPECIFIC SHORTCUTS */}
         {role === 'worker' && (
